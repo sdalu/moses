@@ -1,22 +1,15 @@
 Moses
 =====
 
-
-
-Build
------
-
-mkdir build
-cmake . -B build
-
 Hardware
 --------
 
-As we are dealing with water and the purpose is to avoid a water damage not to make one, we need to select good quality valve and watermater, which is expensive.
+As I'm dealing with water and the purpose is to avoid a water damage, not to make one, I select good quality valve (~ 250€) and watermater (~ 100€), which is expensive. The result willl be more costy than a [Hydrelis Stop-Flow](https://www.hydrelis.fr/stop-flow.php) or a [Grohe Sense Guard](https://www.grohe.fr/fr_fr/smarthome/grohe-sense-guard/), but I won't be locked into proprietary systems, and the this type of valve instantaneously cut water.
+
 * The valve will be power by 24VDC (don't want to play with high voltage) and work as normaly open (NO) as we only want it to be powered when it need to emergently stop water 
 (which hopfully should be never, and so less heat, less current consumption, less stress on the solenoid). 
-* The watermeter will be certified MID R400, U0D0 for good précision and easy installation, and will communicate with m-bus or pulse counting
-* Control will be performed with a Raspberry PI (but it should be possible to aim at a microcontroller instead)
+* The watermeter will be certified MID R400, U0D0 for good accuracie and easy installation, and will communicate with m-bus or pulse counting
+* Control will be performed with a Raspberry PI , optional backup with a battery. The battery backup is less important with m-bus configuration than with pulse counting, as with pulse counting we wil miss pulses everytime the Raspberry PI is off-line It should be alos possible to aim at a microcontroller instead.
 
 ### Shopping list
 1. [Raspberry PI Zero WH](https://thepihut.com/products/raspberry-pi-zero-wh-with-pre-soldered-header)
@@ -36,9 +29,9 @@ Configuration
 
 ### PiJuice
 
-The PiJuice come with an RTC (Real Time Clock) which the Rasbperry Pi until version 5 is missing.
+The PiJuice come with an RTC (Real Time Clock) which the Rasbperry PI until version 5 is missing.
 
-To use it, the `/boot/config.txt` file need to be edited to place the following line which enable to DS1307 component in the linux kernel.
+To use it, the `/boot/config.txt` file need to be edited to place the following line which enable the DS1307 component in the linux kernel.
 ~~~
 dtoverlay=i2c-rtc,ds1307,addr=0x68
 ~~~
@@ -48,6 +41,7 @@ Correct activation can be check by running the `hwclock` command
 
 ### mBus Master hat
 
+#### mBus power enabling 
 There is a minor conflict with the Automation Hat mini,
 as they both share the GPIO 26 (PIN 37), it's possible
 to change the mBus power pin, by unsoldering R19 on the
@@ -57,58 +51,155 @@ back side.
 We will consider, we won't use the analog input A1 of the automation hat mini, and keep going with GPIO 26. 
 It will be configured as output and driving high. This will ensure the mbus is powered, which allows the watermeter reader (HRI) to be powered by the bus instead of draining it's lithium battey
 
+Add in `/boot/config.txt`:
 ~~~
 gpio=26,op,pn,dh
 ~~~
 
+#### UART
+
+The mBus Master Hat rely on the Rasperry PI UART, which can conflict with the bluetooth device and/or the serial console.
+
+In `/boot/config.txt`
+~~~
+dtoverlay=miniuart-bt  # Either use the mini uart, crippling bluetooth
+dtoverlay=disable-bt   #     Or disable bluetooth
+
+dtoverlay=uart0-pi5    # For RPI 5 only
+~~~
+
+
+The use of `ttyAMA0` (as `serial0`) should be disabled, this is done in `/boot/cmdline.txt` by removing/changing the parameter
+~~~
+console=serial0,115200
+~~~
+
+Eventually you also need to run
+~~~
+systemctl disable hciuart.service
+systemctl disable bluealsa.service
+systemctl disable bluetooth.service
+systemctl stop serial-getty@ttyAMA0.service
+systemctl disable serial-getty@ttyAMA0.service
+systemctl mask serial-getty@ttyAMA0.service
+~~~
+
+Failing to address this probleme will lead to messages suche as `Failed to receive M-Bus response frame.`  when using the `mbus-serial-*` programs
+
+
+
 
 ### Automation Hat mini
 
-We only need the relay to drive the solenoid valve, but it also comme with a nice LCD display.
+We only need the relay to drive the solenoid valve, but it also come with a nice LCD display.
+
+#### LCD 
 
 | Device  | Pin                       | Interface             |
 |---------| --------------------------|-----------------------|
 | Relay 1 | GPIO16/PIN36              |                       |
 | LCD     | GPIO9/PIN21, GPIO25/PIN22 | SPI0 + CS=GPIO7/PIN26 |
 
-
+Pin configuration will be done in the `/boot/config.txt` file
 ~~~
 # Relay
 gpio=16,op,dl
+
 # LCD
 gpio=9,op,dl
 gpio=25,op,dl
 ~~~
 
-
-
-
-
-
-
-
-https://www.packom.net/m-bus-master-hat/
-https://www.packom.net/product/m-bus-master-hat/
-https://www.packom.net/wp-content/uploads/2020/11/m-bus-master-hat-datasheet-1.7d.2.pdf
-
-1. Allocate swap
-
-~~~sh
-swapfile=swapfile
-fallocate -l 1G $swapfile
-mkswap $swapfile
-swapon $swapfile
+We will also chage some kernel parameter in `/boot/cmline.txt`, as by default the SPI buffer size is only a page (4096 bytes).
+This will avoid us from breaking some of the SPI transfer into multiple chunks.
+~~~
+spidev.bufsiz=65536
 ~~~
 
-2. Use rustup to install last version of rust
+#### Relay
 
-https://rustup.rs/
+In `/boot/config.txt`
+~~~
+gpio=16,op,dl
+~~~
+
+Software
+--------
+
+### Nut
+
+PiJuice is supported by the nut (Network UPS Tools)
 
 ~~~sh
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-~~
+apt install nut
+~~~
 
-3.install libmbus
+#### nut
+Configure to run in `standalone` mode be editing the`nut.conf` file:
+~~~conf
+MODE=standalone
+~~~
+
+#### ups
+The `ups.conf` contains the list of available UPS devices, here we only have the PiJuice:
+~~~conf
+[__ups_name__]
+driver = pijuice
+port   = /dev/i2c-1
+desc   = "PiJuice"
+~~~
+
+#### upsd
+UPS daemon listening for requests
+* user and autorisations are configured in `upsd.users`
+~~~conf
+[upsmon]
+        password = __password__
+        upsmon primary
+~~~
+
+* will only listen on the loopback interface
+`upsd.conf`
+~~~
+LISTEN 127.0.0.1 3493
+~~~
+
+#### upsmon
+Monitoring is defined in `upsmon.conf`, we will run a custom notification hook declared by `NOTIFYCMD` so UPS state is send using MQTT
+~~~conf
+MONITOR __ups_name__ 1 upsmon __password__ primary
+NOTIFYCMD nut-notify
+~~~
+
+The `nut-notify` script is
+~~~sh
+#!/bin/sh
+
+# -- Config ------------------------------------------------------------
+
+MQTT_HOST="mqtt-host"
+MQTT_USER="mqtt-user"
+MQTT_PASSWD="mqtt-pasword"
+
+# ---------------------------------------------------------------------- 
+# $NOTIFYTYPE / $UPSNAME / $HOSTNAME
+
+# Path to commands
+MOSQUITTO_PUB=/usr/bin/mosquitto_pub
+
+# Notify
+${MOSQUITTO_PUB}                                \
+    -h "${MQTT_HOST}"                           \
+    -u "${MQTT_USER}"                           \
+    -P "${MQTT_PASSWD}"                         \
+    -t "ups/${UPSNAME}/notify/${NOTIFYTYPE}"    \
+    -m "$1"
+~~~
+
+### libmbus
+
+It is the libmbus sotware which will query the mbus through
+`/opt/libmbus/bin/mbus-serial-request-data -b 300 /dev/ttyAMA0 1`. If not already available as a package it can be installed using:
 
 ~~~sh
 git clone https://github.com/rscada/libmbus
@@ -120,24 +211,36 @@ make
 make install
 ~~~
 
-4.Install mbus-httpd
-
-https://github.com/packom/mbus-httpd
+### Ruby
 
 ~~~sh
-git clone https://github.com/packom/mbus-httpd
-cd mbus-httpd
-cargo build
+rubyver=3.1
+apt install ruby${rubyver}dev
+bundler${rubyver} config set --local path 'vendors'
+bundler${rubyver} update
 ~~~
 
-env SERVER_IP=localhost \
-env SERVER_PORT=8080 \
-env LIBMBUS_PATH=~/libmbus/bin \
-env LD_LIBRARY_PATH=/usr/local/lib \
-env RUST_LOG=INFO \
+
+Various documentations:
+* https://www.packom.net/wp-content/uploads/2020/11/m-bus-master-hat-datasheet-1.7d.2.pdf
 
 
-LIBMBUS_PATH=<limbus binary path e.g. ~/libmbus/bin>
-LD_LIBRARY_PATH<path libmbus.so is installed to e.g. /usr/local/lib>
 
-cargo run
+
+1. Allocate swap
+
+~~~sh
+swapfile=swapfile
+fallocate -l 1G $swapfile
+mkswap $swapfile
+swapon $swapfile
+~~~
+
+
+
+Build
+-----
+
+mkdir build
+cmake . -B build
+
