@@ -1,0 +1,6 @@
+[submodule "bitters"]
+	path = 3rd/bitters
+	url = https://gitlab.inria.fr/dalu/bitters
+[submodule "lvgl"]
+	path = 3rd/lvgl
+	url = https://github.com/lvgl/lvgl
