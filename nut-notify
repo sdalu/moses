@@ -1,0 +1,27 @@
+#!/bin/sh
+
+# -- Config ------------------------------------------------------------
+
+# That's bloody slow !!
+#   -> you better hardcode the values
+CONFIG_FILE=/root/moses/config.yaml
+MQTT_HOST=`  yq -r '.[":mqtt"][":host"]'     ${CONFIG_FILE}`
+MQTT_PORT=`  yq -r '.[":mqtt"][":port"]'     ${CONFIG_FILE}`
+MQTT_USER=`  yq -r '.[":mqtt"][":username"]' ${CONFIG_FILE}`
+MQTT_PASSWD=`yq -r '.[":mqtt"][":password"]' ${CONFIG_FILE}`
+
+# ---------------------------------------------------------------------- 
+# $NOTIFYTYPE / $UPSNAME / $HOSTNAME
+
+# Path to commands
+MOSQUITTO_PUB=/usr/bin/mosquitto_pub
+
+# Notify
+${MOSQUITTO_PUB} 				\
+    -h "${MQTT_HOST}"		 		\
+    -p "${MQTT_PORT}" 				\
+    -u "${MQTT_USER}" 				\
+    -P "${MQTT_PASSWD}" 			\
+    -t "ups/${UPSNAME}/notify/${NOTIFYTYPE}" 	\
+    -m "$1"
+
