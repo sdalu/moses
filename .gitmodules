@@ -4,3 +4,6 @@
 [submodule "lvgl"]
 	path = 3rd/lvgl
 	url = https://github.com/lvgl/lvgl
+[submodule "3rd/BME280_SensorAPI"]
+	path = 3rd/BME280_SensorAPI
+	url = https://github.com/boschsensortec/BME280_SensorAPI/
