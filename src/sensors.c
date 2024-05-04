@@ -18,7 +18,6 @@
 #include "common.h"
 
 
-
 //== Helpers ===========================================================
 
 static inline float
@@ -27,6 +26,7 @@ sea_level_pressure(float pressure, float temperature, float altitude) {
 			      (temperature + 0.0065 * altitude + 273.15),
 			  -5.257);
 }
+
 
 
 //== I2C ===============================================================
@@ -40,14 +40,12 @@ static struct bitters_i2c_cfg rpi_i2c_cfg = {
 
 
 
-//== BME280 ============================================================
-
+//== BME280 compatibility layer ========================================
 
 struct bme280_i2c {
     bitters_i2c_t      *dev;
     bitters_i2c_addr_t  addr;
 };
-
 
 static void
 bme280_delay_us(uint32_t period, void *ptr)
@@ -84,93 +82,161 @@ bme280_i2c_write(uint8_t reg, const uint8_t *data, uint32_t len, void *ptr)
     return rc < 0 ? rc : 0;
 }
 
-//======================================================================
 
-static struct {
+
+//== Structures ========================================================
+
+struct sensors_bme280 {
     struct bme280_dev       dev;
     struct bme280_settings  settings;
-    uint32_t                measurement_delay;
     struct bme280_i2c       i2c;
+    uint32_t                measurement_delay;
     bool                    initialized;
-} bme280 = {
-    .dev = {
-	.intf     = BME280_I2C_INTF,
-	.intf_ptr = &bme280.i2c,
-	.read     = bme280_i2c_read,
-	.write    = bme280_i2c_write,
-	.delay_us = bme280_delay_us,
-    },
-    .i2c = {
-	.dev  = &rpi_i2c,
-	.addr = BITTERS_I2C_ADDR_8 | BME280_I2C_ADDR_PRIM,
-    },
+};
+
+struct sensors_mqtt {
+    struct mqtt handler;
+    struct {
+	char *sensors;
+	char *error;
+    } topic;
+};
+
+struct sensors {
+    struct sensors_mqtt   mqtt;
+    struct sensors_bme280 bme280;
+    int                   reduced_latency;
+    unsigned long int     interval;
+    float                 altitude;
 };
 
 
 
+//== Global context ====================================================
+
+char *__progname = "??";
+
+struct sensors sensors = {
+    .mqtt     = {
+	.handler         = MQTT_INITIALIZER(),
+	.topic.sensors   = "waterbreaker/sensors",
+	.topic.error     = "waterbreaker/error",
+    },
+    .bme280   = {
+	.dev = {
+	    .intf     = BME280_I2C_INTF,
+	    .intf_ptr = &sensors.bme280.i2c,
+	    .read     = bme280_i2c_read,
+	    .write    = bme280_i2c_write,
+	    .delay_us = bme280_delay_us,
+	},
+	.i2c = {
+	    .dev  = &rpi_i2c,
+	    .addr = BITTERS_I2C_ADDR_8 | BME280_I2C_ADDR_PRIM,
+	},
+    },
+    .interval = 60,
+    .altitude = NAN,
+};
+
+
+
+//== MQTT ==============================================================
+
+int
+sensors_mqtt_init(struct sensors_mqtt *mqtt)
+{
+    int rc;
+    
+    // Initialise (0 = not enabled)
+    rc = mqtt_init(&mqtt->handler, 0, NULL);
+    if (rc <= 0) return rc;
+    
+    // Start
+    rc = mqtt_start(&mqtt->handler);
+    if (rc < 0) goto failed;
+
+    // Done
+    LOG("MQTT connection established");
+    return 0;
+    
+ failed:
+    mqtt_destroy(&mqtt->handler);
+    return -1;
+}
+
+
+
+//== BME280 ============================================================
+
 static int
-sensors_bme280_init(void)
+sensors_bme280_init(struct sensors_bme280 *bme280)
 {
     // Init bme280
-    if (bme280_init(&bme280.dev) != BME280_OK)
+    if (bme280_init(&bme280->dev) != BME280_OK)
 	return -1;
 
     // Always read the current settings before writing
     // especially when all the configuration is not modified
-    if (bme280_get_sensor_settings(&bme280.settings, &bme280.dev) != BME280_OK)
+    if (bme280_get_sensor_settings(&bme280->settings,
+				   &bme280->dev) != BME280_OK)
 	return -1;
 
     // Configuring the over-sampling rate, filter coefficient and standby time
-    bme280.settings.filter       = BME280_FILTER_COEFF_2;
-    bme280.settings.osr_h        = BME280_OVERSAMPLING_2X;
-    bme280.settings.osr_p        = BME280_OVERSAMPLING_2X;
-    bme280.settings.osr_t        = BME280_OVERSAMPLING_2X;
-    bme280.settings.standby_time = BME280_STANDBY_TIME_0_5_MS;
+    bme280->settings.filter       = BME280_FILTER_COEFF_2;
+    bme280->settings.osr_h        = BME280_OVERSAMPLING_2X;
+    bme280->settings.osr_p        = BME280_OVERSAMPLING_2X;
+    bme280->settings.osr_t        = BME280_OVERSAMPLING_2X;
+    bme280->settings.standby_time = BME280_STANDBY_TIME_0_5_MS;
 
     // Save settings
     if (bme280_set_sensor_settings(BME280_SEL_ALL_SETTINGS,
-				   &bme280.settings, &bme280.dev) != BME280_OK)
+				   &bme280->settings,
+				   &bme280->dev) != BME280_OK)
 	return -1;
 
     // Calculate measurement time in microseconds
-    if (bme280_cal_meas_delay(&bme280.measurement_delay,
-			      &bme280.settings) != BME280_OK)
+    if (bme280_cal_meas_delay(&bme280->measurement_delay,
+			      &bme280->settings) != BME280_OK)
 	return -1;
 
     // Always set the power mode after setting the configuration
     if (bme280_set_sensor_mode(BME280_POWERMODE_NORMAL,
-			       &bme280.dev) != BME280_OK)
+			       &bme280->dev) != BME280_OK)
 	return -1;
 
     // Done
-    bme280.initialized = true;
+    bme280->initialized = true;
     return 0;
 }
 
 
 int
-get_tph(float *temperature, float *pressure, float *humidity)
+sensors_get_tph(struct sensors *sensors,
+		float *temperature, float *pressure, float *humidity)
 {
+    struct sensors_bme280 *bme280 = &sensors->bme280;
+    
     // Sanity check
-    if (! bme280.initialized)
+    if (! bme280->initialized)
 	return -1;
     
     // Check status and wait for measurement delay if necessary
     uint8_t status;
     if (bme280_get_regs(BME280_REG_STATUS, &status, sizeof(status),
-			&bme280.dev) != BME280_OK) {
+			&bme280->dev) != BME280_OK) {
 	return -1;
     }
 
     // Is measuring being done?
     if (status & BME280_STATUS_MEAS_DONE) {
-	bme280.dev.delay_us(bme280.measurement_delay, bme280.dev.intf_ptr);
+	bme280->dev.delay_us(bme280->measurement_delay, bme280->dev.intf_ptr);
     }
     
     // Read compensated data
     struct bme280_data comp_data;
     if (bme280_get_sensor_data(BME280_ALL, &comp_data,
-			       &bme280.dev) != BME280_OK) {
+			       &bme280->dev) != BME280_OK) {
 	return -1;
     }
 
@@ -184,6 +250,7 @@ get_tph(float *temperature, float *pressure, float *humidity)
 }
 
 
+
 //======================================================================
 
 int sensors_init(void) {
@@ -193,8 +260,9 @@ int sensors_init(void) {
 	return -1;
     }
 
-    // Initialize various sensors
-    if (sensors_bme280_init() < 0)
+    // Initialize sub-components
+    if ((sensors_mqtt_init(&sensors.mqtt)     < 0) ||
+	(sensors_bme280_init(&sensors.bme280) < 0))
 	return -1;
 
     // Done
@@ -202,24 +270,20 @@ int sensors_init(void) {
 }
 
 
+
 //======================================================================
 
-char *__progname = "??";
-
-
-
-int main(int argc, char *argv[]) {
-    char             *progname = basename(argv[0]);
-    unsigned long int interval = 60;
-    float             altitude = NAN;
-    
+static void
+sensors_parse_config(int argc, char **argv, struct sensors *s)
+{
     // Argument parsing
-    static const char *const shortopts = "+i:a:";
+    static const char *const shortopts = "+ri:a:h";
 
     struct option longopts[] = {
-	{ "interval",   required_argument, NULL, 'i' },
-	{ "altitude",   required_argument, NULL, 'a' },
-	{ 0 }
+	{ "reduced-latency", no_argument,	NULL, 'r' },
+	{ "interval",        required_argument, NULL, 'i' },
+	{ "altitude",        required_argument, NULL, 'a' },
+	{ NULL }
     };
 
     int opti, optc;
@@ -231,48 +295,85 @@ int main(int argc, char *argv[]) {
 	    break;
 
 	switch (optc) {
+	case 'r':
+	    s->reduced_latency = 1;
+	    break;
 	case 'i':
-	    if (parse_idle_timeout(optarg, &interval) < 0)
+	    if (parse_idle_timeout(optarg, &s->interval) < 0)
 		USAGE_DIE("invalid reporting interval (1s .. 10w)");
 	    break;
 	case 'a':
-	    altitude = strtof(optarg, &endptr);
+	    s->altitude = strtof(optarg, &endptr);
 	    if ((*optarg == '\0') || (*endptr != '\0'))
 		USAGE_DIE("invalid number for altitude");
 	    break;
+	case 'h':
+	    printf("%s [opts]\n", __progname);
+	    printf("  -r, --reduced-latency     try to reduce latency\n");
+	    printf("  -i, --interval=SEC        publish sensors information every SEC\n");
+	    printf("  -a, --altitude=METERS     compute sea level pressure\n");
+	    printf("\n");
+	    exit(1);
 	default:
-	    fprintf(stderr,
-		    "usage: %s [--interval=SECONDS] [--altitude=METERS]\n",
-		    progname);
 	    exit(1);
 	}
     }
     argc -= optind;
     argv += optind;
+}
+
+
+int main(int argc, char *argv[]) {
+    __progname = basename(argv[0]);
+
+    // Shortcuts
+    struct sensors      *s    = &sensors;
+    struct sensors_mqtt *mqtt = &sensors.mqtt;
+        
+    // Configuration
+    mqtt_config_from_env(&sensors.mqtt.handler);
+    sensors_parse_config(argc, argv, &sensors);
     
     // Initialization
-    if (sensors_init() < 0) {
-	DIE(2, "Failed to initialized sensors");
-    };
+    if (sensors_init() < 0) 
+	DIE(2, "Failed to initialized");
     
+    // Reducing latency
+    if (sensors.reduced_latency)
+	reduced_lattency();
+
     // Polling
-    struct timespec next_polling, ts;
+    struct timespec next_polling;
     clock_gettime(CLOCK_REALTIME, &next_polling);
     while (1) {
 	// Environment (Temperature, Pressure, Humidity)
 	float temperature, pressure, humidity;
-	if (get_tph(&temperature, &pressure, &humidity) < 0) {
+	if (sensors_get_tph(s, &temperature, &pressure, &humidity) < 0) {
 	    PUT_FAIL("environment", "read");
+
+	    static char *msg =
+		MQTT_ERROR_MSG("breaker", "error",
+			       "failed to read sensors values");
+	    MQTT_PUBLISH(mqtt, sensors, 1, false, msg);
 	} else {
-	    if (! isnan(altitude))
-		pressure = sea_level_pressure(pressure, temperature, altitude);
+	    if (! isnan(s->altitude))
+		pressure = sea_level_pressure(pressure, temperature,
+					      s->altitude);
 	    PUT_DATA("environment", 
 		     "temperature=%0.2f,pressure=%0.0f,humidity=%0.2f",
 		     temperature, pressure, humidity);
+
+	    static char *fmt = 
+		     "{" "\"temperature\"" ": %0.2f" ", "
+		         "\"pressure\""    ": %0.0f" ", "
+		         "\"humidity\""    ": %0.2f"
+		    "}";
+	    MQTT_PUBLISH(mqtt, sensors, 1, false,
+			 fmt, temperature, pressure, humidity);
 	}
 	
 	// Next	 
-	next_polling.tv_sec += interval;
+	next_polling.tv_sec += s->interval;
     sleep_again:
 	if (clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,
 			    &next_polling, NULL) < 0) {

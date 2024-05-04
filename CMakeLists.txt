@@ -9,6 +9,9 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 
 set(3RD ${PROJECT_SOURCE_DIR}/3rd)
 
+add_compile_options(-Wall)
+#add_compile_options( -Wextra -Wpedantic)
+
 # m-bus library
 find_path(   MBUS_INCLUDE_DIR
              NAMES mbus/mbus.h
@@ -19,9 +22,18 @@ find_library(MBUS_LIBRARY
              HINTS /opt/libmbus/lib
 	     REQUIRED)
 
-mark_as_advanced(MBUS_INCLUDE_DIR MBUS_LIBRARY)
+# Mosquitto library
+find_path(   MOSQUITTO_INCLUDE_DIR
+             NAMES mosquitto.h
+	     REQUIRED)
+find_library(MOSQUITTO_LIBRARY
+             NAMES mosquitto
+	     REQUIRED)
+
+#mark_as_advanced(MBUS_INCLUDE_DIR MBUS_LIBRARY)
 
 
+add_definitions(-D_GNU_SOURCE)
 
  
 
@@ -31,11 +43,12 @@ mark_as_advanced(MBUS_INCLUDE_DIR MBUS_LIBRARY)
 #
 add_executable(moses_watermeter src/watermeter.c src/common.c)
 target_include_directories(moses_watermeter PUBLIC ${MBUS_INCLUDE_DIR})
+target_include_directories(moses_watermeter PUBLIC ${MOSQUITTO_INCLUDE_DIR})
 target_compile_definitions(moses_watermeter PUBLIC WITH_LOG)
 target_compile_definitions(moses_watermeter PUBLIC PUT_CLOCK=CLOCK_REALTIME
 					           INTERVAL_CLOCK=CLOCK_REALTIME)
 #target_link_directories(moses_watermeter PUBLIC /opt/libmbus/lib)
-target_link_libraries(moses_watermeter ${MBUS_LIBRARY} m pthread)
+target_link_libraries(moses_watermeter ${MBUS_LIBRARY} ${MOSQUITTO_LIBRARY} m pthread)
 
 
 #
@@ -45,7 +58,8 @@ add_executable(moses_breaker src/breaker.c src/common.c)
 target_compile_definitions(moses_breaker PUBLIC WITH_LOG)
 target_compile_definitions(moses_breaker PUBLIC PUT_CLOCK=CLOCK_REALTIME
 					        INTERVAL_CLOCK=CLOCK_REALTIME)
-target_link_libraries(moses_breaker  m pthread)
+target_include_directories(moses_watermeter PUBLIC ${MOSQUITTO_INCLUDE_DIR})
+target_link_libraries(moses_breaker ${MOSQUITTO_LIBRARY} m pthread)
 
 
 
@@ -54,6 +68,8 @@ target_link_libraries(moses_breaker  m pthread)
 #
 
 add_executable(moses_sensors src/sensors.c src/common.c)
+
+target_include_directories(moses_watermeter PUBLIC ${MOSQUITTO_INCLUDE_DIR})
 
 # BME 280
 target_include_directories(moses_sensors PUBLIC ${3RD}/BME280_SensorAPI)
@@ -71,7 +87,7 @@ target_sources(moses_sensors PUBLIC ${3RD}/bitters/src/bitters.c
 			      ${3RD}/bitters/src/i2c.c
 			      ${3RD}/bitters/src/gpio.c)
 
-target_link_libraries(moses_sensors m)
+target_link_libraries(moses_sensors m pthread ${MOSQUITTO_LIBRARY})
 
 
 

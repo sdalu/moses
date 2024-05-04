@@ -30,11 +30,14 @@
 
 #include "common.h"
 
-//======================================================================
+//== Constants =========================================================
 
 /* Infered from: uapi/linux/gpio.h */
 #define MAX_EVENTS ((GPIO_V2_LINES_MAX) * 16)
 
+
+
+//== Structures ========================================================
 
 struct pulse_counting {
     struct {                     // Controller
@@ -55,7 +58,6 @@ struct pulse_counting {
     unsigned long idle_timeout;  // idle timeout in s
 };
 
-
 struct index_reader {
     char         *device;         // serial device
     long          baudrate;       // baudrate
@@ -65,10 +67,48 @@ struct index_reader {
     unsigned long interval;
 };
 
+struct watermeter_mqtt {          // MQTT
+    struct mqtt handler;
+    struct {
+	char *pulse;
+	char *index;
+	char *error;
+    } topic;
+};
+
 struct watermeter {
-    int reduced_latency;
-    struct pulse_counting pulse_counting;
-    struct index_reader   index_reader;
+    struct watermeter_mqtt mqtt;
+    struct pulse_counting  pulse_counting;
+    struct index_reader    index_reader;
+    int                    reduced_latency;
+};
+
+
+//== Global context ====================================================
+
+char *__progname = "??";
+
+struct watermeter watermeter =  {
+    .mqtt     = {
+	.handler     = MQTT_INITIALIZER(),
+	.topic.pulse = "waterbreaker/pulse",
+	.topic.index = "waterbreaker/index",
+	.topic.error = "waterbreaker/error",
+    },
+    .pulse_counting = {
+	.ctrl.id   = NULL,
+	.ctrl.fd   = -1,
+	.pin.id    = ~0,
+	.pin.fd    = -1,
+	.pin.flags = GPIO_V2_LINE_FLAG_EDGE_RISING,
+	.pin.label = "pulse-counting",
+    },
+    .index_reader    = {
+	.device    = "/dev/ttyAMA0",
+	.baudrate  = 2400,
+	.address   = "1",
+	.interval  = 60,
+    },
 };
 
 
@@ -200,14 +240,45 @@ mbus_watermeter_get_index(mbus_handle *h, char *addr, double *index)
 
 
 
+//== MQTT ==============================================================
+
+
+int
+watermeter_mqtt_init(struct watermeter_mqtt *mqtt)
+{
+    int rc;
+    
+    // Initialise (0 = not enabled)
+    rc = mqtt_init(&mqtt->handler, 0, NULL);
+    if (rc <= 0) return rc;
+    
+    // Start
+    rc = mqtt_start(&mqtt->handler);
+    if (rc < 0) goto failed;
+
+    // Done
+    LOG("MQTT connection established");
+    return 0;
+    
+ failed:
+    mqtt_destroy(&mqtt->handler);
+    return -1;
+}
+
+
+
 //======================================================================
 
 int
 watermeter_init(struct watermeter *w)
 {
-    struct pulse_counting *pc = &w->pulse_counting;
-    struct index_reader   *ir = &w->index_reader;
-
+    struct watermeter_mqtt *mqtt = &w->mqtt;
+    struct pulse_counting  *pc   = &w->pulse_counting;
+    struct index_reader    *ir   = &w->index_reader;
+    
+    if (watermeter_mqtt_init(mqtt) < 0)
+	return -1;
+    
     
     //
     // M-BUS
@@ -215,12 +286,12 @@ watermeter_init(struct watermeter *w)
     if (ir->device != NULL) {
 	ir->mbus = mbus_open(ir->device, ir->baudrate);
 	if (ir->mbus == NULL) {
-	    LOG("failed to open/connect to m-bus (dev=%s, baudrate=%d)",
+	    LOG("failed to open/connect to m-bus (dev=%s, baudrate=%ld)",
 		ir->device, ir->baudrate);
 	    goto failed_mbus;
 	}
 	mbus_softreset(ir->mbus);
-	LOG("m-bus device %s opened at %d bauds", ir->device, ir->baudrate);
+	LOG("m-bus device %s opened at %ld bauds", ir->device, ir->baudrate);
     } else {
 	LOG("No m-bus device specified (skipping)");
     }
@@ -320,8 +391,6 @@ watermeter_get_index(struct watermeter *w, double *index)
 
 //======================================================================
 
-char *__progname = "??";
-
 
 static void
 watermeter_parse_config(int argc, char **argv, struct watermeter *w)
@@ -412,6 +481,7 @@ watermeter_parse_config(int argc, char **argv, struct watermeter *w)
 	    printf("             pull-up|pull-down\n");
 	    printf("  -E, --edge=rising|falling        gpio edge detection\n");
 	    printf("  -I, --idle-timeout=SEC           gpio notify if no pulse\n");
+	    printf("\n");
 	    exit(0);
 	case 0:
 	    break;
@@ -427,30 +497,14 @@ watermeter_parse_config(int argc, char **argv, struct watermeter *w)
 
 //======================================================================
 
-struct watermeter watermeter =  {
-    .pulse_counting = {
-	.ctrl.id   = NULL,
-	.ctrl.fd   = -1,
-	.pin.id    = ~0,
-	.pin.fd    = -1,
-	.pin.flags = GPIO_V2_LINE_FLAG_EDGE_RISING,
-	.pin.label = "pulse-counting",
-    },
-    .index_reader    = {
-	.device    = "/dev/ttyAMA0",
-	.baudrate  = 2400,
-	.address   = "1",
-	.interval  = 60,
-    },
-};
-
 static pthread_t thr_pulse_counting;
 static pthread_t thr_index_reader;
 
 
 __attribute__((noreturn))
 static void * index_reader_task(void *parameters) {
-    struct index_reader   *ir = parameters;
+    struct watermeter_mqtt *mqtt = &watermeter.mqtt;
+    struct index_reader    *ir   = parameters;
 
     // Polling
     struct timespec next_polling;
@@ -460,8 +514,13 @@ static void * index_reader_task(void *parameters) {
 	double value;
 	if (watermeter_get_index(&watermeter, &value) < 0) {
 	    PUT_FAIL("watermeter", "read");
+	    static char *msg =
+		MQTT_ERROR_MSG("watermeter", "error",
+			       "failed to read index");
+	    MQTT_PUBLISH(mqtt, error, 1, false, msg);
 	} else {
 	    PUT_DATA("watermeter", "index=%0.3f", value);
+	    MQTT_PUBLISH(mqtt, index, 1, false, "%0.3f", value);
 	}
 	
 	// Next	 
@@ -478,9 +537,12 @@ static void * index_reader_task(void *parameters) {
 
 __attribute__((noreturn))
 static void * pulse_counting_task(void *parameters) {
-    struct pulse_counting *pc = parameters;
+    struct watermeter_mqtt *mqtt = &watermeter.mqtt;
+    struct pulse_counting  *pc   = parameters;
 
-    while(1) {	
+    while(1) {
+	int pulse = 0;
+
 	if (pc->flags.idle_timeout) {
 	    struct timespec ts = {
 		.tv_sec  = pc->idle_timeout
@@ -494,8 +556,7 @@ static void * pulse_counting_task(void *parameters) {
 		LOG_ERRNO("ppoll failed");
 		continue;
 	    } else if (rc == 0) {
-		PUT_DATA("watermeter", "pulse=0");
-		continue;
+		goto publish;
 	    }
 	}
 
@@ -504,14 +565,23 @@ static void * pulse_counting_task(void *parameters) {
 	    
 	if (size < 0) {
 	    LOG_ERRNO("failed to read event");
+	    PUT_FAIL("watermeter", "pulse");
+
+	    static char *msg =
+		MQTT_ERROR_MSG("watermeter", "error",
+			       "failed to read pulse");
+	    MQTT_PUBLISH(mqtt, error, 1, false, msg);
 	    continue;
 	} else if (size % sizeof(struct gpio_v2_line_event)) {
 	    LOG("got event of unexpected size");
 	    continue;
 	}
 
-	PUT_DATA("watermeter", "pulse=%d",
-		 size / sizeof(struct gpio_v2_line_event));
+	pulse = size / sizeof(struct gpio_v2_line_event);
+	
+    publish:
+	PUT_DATA("watermeter", "pulse=%d", pulse);
+	MQTT_PUBLISH(mqtt, pulse, 2, false, "%u", pulse);
     }
 }
 
@@ -522,18 +592,16 @@ main(int argc, char **argv)
     __progname = basename(argv[0]);
 
     // Configuration
+    mqtt_config_from_env(&watermeter.mqtt.handler);
     watermeter_parse_config(argc, argv, &watermeter);
 
     // Initialization
-    if (watermeter_init(&watermeter) < 0) {
-	DIE(2, "failed to initialize watermeter");
-    }
+    if (watermeter_init(&watermeter) < 0)
+	DIE(2, "failed to initialize");
 
     // Reducing latency
-    if (watermeter.reduced_latency) {
+    if (watermeter.reduced_latency)
 	reduced_lattency();
-    }
-    
 
     // Starting threads
     if (watermeter.pulse_counting.ctrl.id)

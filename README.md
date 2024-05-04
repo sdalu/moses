@@ -4,13 +4,26 @@ Moses
 Hardware
 ========
 
-As I'm dealing with water and the purpose is to avoid a water damage, not to make one, I select good quality valve (~ 250€) and watermater (~ 100€), which is expensive. The result willl be more costy than a [Hydrelis Stop-Flow](https://www.hydrelis.fr/stop-flow.php) or a [Grohe Sense Guard](https://www.grohe.fr/fr_fr/smarthome/grohe-sense-guard/), but I won't be locked into proprietary systems, and the this type of valve instantaneously cut water.
+Dealing with water and the purpose being to avoid a water damage, not
+to make one, the choice has been made to select good quality valve 
+(~ 250€) and watermeter (~ 100€), which is expensive.
 
-* The valve will be power by 24VDC (don't want to play with high voltage) and work as normaly open (NO) as we only want it to be powered when it need to emergently stop water 
-(which hopfully should be never, and so less heat, less current consumption, less stress on the solenoid). 
-* The watermeter will be certified MID R400, U0D0 for good accuracie and easy installation, and will communicate with m-bus or pulse counting
-* Control will be performed with a Raspberry PI (it should be also possible to aim at a microcontroller instead). 
-* Optional backup with a battery. Especially useful if doing pulse counting, as we don't want to miss pulses due to Raspberry PI being off-line.
+The result willl be more costy than a [Hydrelis Stop-Flow](https://www.hydrelis.fr/stop-flow.php) or a [Grohe Sense Guard](https://www.grohe.fr/fr_fr/smarthome/grohe-sense-guard/), but you won't be locked into proprietary systems.
+
+* The valve will be power by 24VDC (don't want to play with high
+  voltage) and work as normaly open (NO) as we only want it to be
+  powered when it need to emergently stop water (which hopfully should
+  be never, and so less heat, less current consumption, less stress on
+  the solenoid).
+* The watermeter will be certified MID R400, U0D0 for good accuracie
+  and easy installation, and will communicate with m-bus or pulse
+  counting
+* Control will be performed with a Raspberry PI (would be interesting to do
+  it with a micro-controller instead).
+  possible to aim at a microcontroller instead).
+* Optional backup with a battery. Especially useful if doing pulse
+  counting, as we don't want to miss pulses due to Raspberry PI being
+  off-line.
 
 ## Shopping list
 1. [Raspberry PI Zero WH](https://thepihut.com/products/raspberry-pi-zero-wh-with-pre-soldered-header)
@@ -22,11 +35,13 @@ As I'm dealing with water and the purpose is to avoid a water damage, not to mak
 6. [Bürkert (type 6281): Solenoid valve for drinking water, brass, G3/4", NO, 24VDC](https://tameson.fr/products/electrovanne-d-eau-potable-g3-4-en-laiton-no-24vdc-6281-256576-256576) + [Connector](https://tameson.fr/products/connecteur-avec-led-din-a-as-cal-tameson-as-cal) 
 7. [Sensus 620 watermeter](https://www.compteur-energie.com/compteurs-eau-froide-sensus-compteur-eau-620.htm) + [HRI B4/D1/8L](https://www.compteur-energie.com/eau-emetteur-impulsions-sensus-hri-b4-amrab152-amrab162.htm)
 8. [24VDC power supply (MeanWell LPV-35-24)](https://www.amazon.fr/gp/product/B00ID6L04S) + [5VDC stepdown buck regulator (Bauer Electronics, DC DC 8V-32V to 5V)](https://www.amazon.fr/gp/product/B09B7XZYJQ)
+9. [Pimoroni BME280 Breakout](https://shop.pimoroni.com/products/bme280-breakout?variant=29420960677971) (optional)
 
 It is also possible to replace the _Automation hat mini_ with a [Replay 4 zero](https://thepihut.com/products/relay-4-zero-4-channel-relay-board-for-pi-zero)
 
-Configuration
-=============
+
+Hardware configuration
+======================
 
 PiJuice
 -------
@@ -50,12 +65,12 @@ There is a minor conflict with the *Automation Hat mini*, as they both
 share the `GPIO 26` (`PIN 37`), it's possible to change the mBus power
 pin, by unsoldering `R19` on the top side, near the green led, and
 soldering it back on the pin selector on the back side.  But we will
-consider, we won't use the input `I1` of the automation hat mini, and
+consider, we won't use the input `I1` of the *automation hat mini*, and
 keep going with `GPIO 26`.
 
 It will be configured as output and driving high. This will ensure the
 mbus is powered, which allows the watermeter reader (HRI) to be
-powered by the bus instead of draining its lithium battey
+powered by the bus instead of draining its lithium battery
 
 Add in `/boot/config.txt`:
 ~~~
@@ -135,7 +150,7 @@ In `/boot/config.txt`
 gpio=16,op,dl
 ~~~
 
-24V need to be connect to the `COM`, and the solenoid wire to the `NO`
+24V need to be connect to the `COM`, and the solenoid red wire to the `NO`
 
 
 ### Pulse counting
@@ -148,8 +163,8 @@ gpio=20,ip,pu
 ~~~
 
 
-Software
-========
+System configuration
+====================
 
 Nut
 ---
@@ -273,4 +288,28 @@ Build
 ~~~sh
 cmake -B build
 make -C build
+~~~
+
+
+If using MQTT the following environment variable must be defined:
+
+| Environment variable | Required | Comment                    |
+|----------------------|----------|----------------------------|
+| `MQTT_HOST`          |    x     | Hostname or IP address     |
+| `MQTT_PORT`          |          | Port number (default 1883) |
+| `MQTT_USERNAME`      |          | Username                   |
+| `MQTT_PASSWORD`      |          | Password                   |
+
+
+Three programs are available:
+* `moses_watermeter`: read the watermeter
+* `moses_breaker`: command the solenoid valve
+* `moses_sensors`: read the BME280 sensor
+
+Example running them:
+
+~~~
+moses_breaker    -r -P rpi:36 -I 1min -M open-source
+moses_sensors    -r -i 1min 
+moses_watermeter -r -i 1min -I 1min -P rpi:38 -B pull-up -E rising 
 ~~~

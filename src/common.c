@@ -1,5 +1,7 @@
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdbool.h>
+#include <stdarg.h>
 #include <inttypes.h>
 #include <limits.h>
 #include <string.h>
@@ -8,6 +10,7 @@
 #include <sys/mman.h>
 
 #include <linux/gpio.h>
+#include <mosquitto.h>
 
 #include "common.h"
 
@@ -265,4 +268,216 @@ reduced_lattency(void)
 
     // Avoid swapping by locking page in memory
     mlockall(MCL_CURRENT | MCL_FUTURE);
+}
+
+
+
+/************************************************************************
+ * Mosquitto                                                            *
+ ************************************************************************/
+
+// Callback called when the client receives a CONNACK message from the broker.
+static void
+_mqtt_on_connect(struct mosquitto *mosq, void *obj, int reason_code)
+{
+    struct mqtt *mqtt = obj;
+    
+    if (reason_code != 0) {
+	// mosquitto_connack_string() produces an appropriate
+	// string for MQTT v3.x clients, the equivalent for MQTT v5.0
+	// clients is mosquitto_reason_string().
+	if (mqtt->connection_retry != 0) {
+	    if (mqtt->connection_retry > 0)
+		mqtt->connection_retry--;
+	    LOG("connection failed [RETRYING] (%s)",
+		mosquitto_connack_string(reason_code));
+	} else {
+	    LOG("connection failed [DISCONNECTING] (%s)",
+		mosquitto_connack_string(reason_code));
+	    mosquitto_disconnect(mosq);
+	}
+	return;
+    }
+
+    // Reset retry counter
+    mqtt->connection_retry = mqtt->cfg.connection_max_retry;
+    
+    // Making subscriptions in the on_connect() callback means that if the
+    // connection drops and is automatically resumed by the client,
+    // then the subscriptions will be recreated when the client reconnects.
+    for (unsigned int i = 0 ; i < mqtt->subcount ; i++) {
+	int rc = mosquitto_subscribe(mosq, NULL,
+				     mqtt->sub[i].topic, mqtt->sub[i].qos);
+	if (rc != MOSQ_ERR_SUCCESS) {
+	    // Disconnect if we were unable to subscribe
+	    LOG_ERRMQTT(rc, "subscribing failed [DISCONNECTING]");
+	    mosquitto_disconnect(mosq);
+	    return;
+	}
+    }
+}
+
+
+int
+mqtt_init(struct mqtt *mqtt, int subcount, struct mqtt_subscription *sub)
+{
+    // Sanity check
+    if (mqtt->cfg.host == NULL) {
+	LOG("MQTT not enabled");
+	return 0;
+    }
+
+    // Deal with subscriptions
+    if ((subcount != 0) && (sub != NULL)) {
+	mqtt->subcount = subcount;
+	mqtt->sub      = calloc(subcount, sizeof(struct mqtt_subscription));
+	if (mqtt->sub != NULL) {
+	    memcpy(mqtt->sub, sub, subcount * sizeof(struct mqtt_subscription));
+	} else {
+	    LOG("unable to allocate memory");
+	    return -1;
+	}
+    }
+    
+    // Mosquitto library initialization
+    if (mosquitto_lib_init() != MOSQ_ERR_SUCCESS) {
+	LOG("unable to initialize MQTT library");
+	return -1;
+    }
+    
+    // Create a new client instance.
+    mqtt->mosq = mosquitto_new(mqtt->cfg.client_id, true, mqtt);
+    if (mqtt->mosq == NULL) {
+	errno = ENOMEM;
+	LOG_ERRNO("unable to instance MQTT (Mosquitto) instance");
+	mosquitto_lib_cleanup();
+	return -1;;
+    }
+
+    // Callbacks
+    mosquitto_connect_callback_set(mqtt->mosq, _mqtt_on_connect);
+    
+
+    // Done
+    return 1;
+}
+
+int
+mqtt_destroy(struct mqtt *mqtt)
+{
+    if (mqtt->mosq)
+	mosquitto_destroy(mqtt->mosq);
+    mqtt->mosq = NULL;
+
+    free(mqtt->sub);
+    mqtt->sub      = NULL;
+    mqtt->subcount = 0;
+    return 0;
+}
+    
+
+
+int
+mqtt_publish(struct mqtt *mqtt, const char *topic, int qos, bool retain,
+	     const char *fmt, ...)
+{
+    if ((mqtt == NULL) || (mqtt->mosq == NULL) || (topic == NULL))
+	return 0;
+
+    int rc = -1;
+
+    va_list ap;
+    va_start(ap, fmt);
+    char *data  = NULL;
+    int datalen = vasprintf(&data, fmt, ap);
+    va_end(ap);
+    
+    if (datalen < 0) {
+	LOG("failed to allocate memory for asprintf");
+    } else {
+	rc = mosquitto_publish(mqtt->mosq, NULL, topic,
+			       datalen, data, qos, retain);
+	if (rc != MOSQ_ERR_SUCCESS) {
+	    LOG_ERRMQTT_PUBLISH(rc, topic);
+	} else {
+	    rc = 1;
+	}
+	
+	free(data);
+    }
+
+    return rc;
+}
+	     
+void
+mqtt_config_from_env(struct mqtt *mqtt)
+{
+    struct mqtt_config *cfg = &mqtt->cfg;
+    
+    // Use environment variable to overide default parameters
+    char *s_host      = getenv("MQTT_HOST");
+    char *s_port      = getenv("MQTT_PORT");
+    char *s_client_id = getenv("MQTT_CLIENT_ID");
+    if (s_host) {
+	cfg->host = s_host;
+    }
+    if (s_port) {
+	char *endptr;
+	long port = strtol(s_port, &endptr, 10);
+	if ((*s_port == '\0') || (*endptr != '\0') ||
+	    (port <= 0) || (port > 65535))
+	    USAGE_DIE("invalid MQTT port number (1..65535)");
+	cfg->port = port;
+    }
+    if (s_client_id) {
+	cfg->client_id = s_client_id;
+    }
+    cfg->username = getenv("MQTT_USERNAME");
+    cfg->password = getenv("MQTT_PASSWORD");
+    unsetenv("MQTT_USERNAME");
+    unsetenv("MQTT_PASSWORD");
+}
+
+int
+mqtt_start(struct mqtt *mqtt) 
+{
+    int rc;
+
+    
+    // If host not defined, mosquitto is disabled
+    if (mqtt->cfg.host == NULL)
+	return -1;
+
+    // Set retry
+    mqtt->connection_retry = mqtt->cfg.connection_max_retry;
+
+    // Set options
+    mosquitto_int_option(mqtt->mosq, MOSQ_OPT_TCP_NODELAY, 1);
+    
+    // Username / password
+    rc = mosquitto_username_pw_set(mqtt->mosq,
+				   mqtt->cfg.username, mqtt->cfg.password);
+    if (rc != MOSQ_ERR_SUCCESS) {
+	LOG_ERRMQTT(rc, "failed to set username/password for MQTT");
+	return -1;
+    }
+    
+    // Connect
+    rc = mosquitto_connect(mqtt->mosq,
+			   mqtt->cfg.host, mqtt->cfg.port, mqtt->cfg.keepalive);
+    if (rc != MOSQ_ERR_SUCCESS) {
+	LOG_ERRMQTT(rc, "unable to connect to MQTT server");
+	return -1;
+    }
+
+    // Run the network loop in a background thread
+    rc = mosquitto_loop_start(mqtt->mosq);
+    if (rc != MOSQ_ERR_SUCCESS) {
+	LOG_ERRMQTT(rc, "starting MQTT loop failed");
+	return -1;
+    }
+
+    LOG("STARTES");
+    // Done
+    return 0;
 }
