@@ -1,0 +1,33 @@
+name: Build validation
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Installing packaged dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get -y install wget libmosquitto-dev libtool libtool-bin m4
+    - name: Installing mbus from source
+      run: |
+        git clone https://github.com/rscada/libmbus 
+        cd libmbus
+        ./build.sh
+        ./configure --prefix=/opt/libmbus
+        make 
+        sudo make install
+    - name: Building
+      run: |
+        cmake -B build -DWITH_LOG=1 -DWITH_PUT=1
+        make -C build
