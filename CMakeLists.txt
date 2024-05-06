@@ -1,41 +1,63 @@
 cmake_minimum_required(VERSION 3.10)
 project(Moses)
 
-set(CMAKE_C_STANDARD   17)
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+#
+# Common compiler options
+#
+
+set(CMAKE_C_STANDARD   23)
+add_compile_options(-Wall)
+add_compile_options( -Wextra -Wpedantic)
+add_definitions(-D_GNU_SOURCE)
+
+if (WITH_LOG)
+add_compile_definitions(WITH_LOG)
+endif()
+
+if (WITH_PUT)
+add_compile_definitions(WITH_PUT)
+endif()
+
+#
+# Directories
+#
 
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
-
 set(3RD ${PROJECT_SOURCE_DIR}/3rd)
 
-add_compile_options(-Wall)
-#add_compile_options( -Wextra -Wpedantic)
 
-# m-bus library
-find_path(   MBUS_INCLUDE_DIR
-             NAMES mbus/mbus.h
-             HINTS /opt/libmbus/include
-	     REQUIRED)
-find_library(MBUS_LIBRARY
-             NAMES mbus
-             HINTS /opt/libmbus/lib
-	     REQUIRED)
+#
+# Libraries detection
+#
+
+# M-Bus
+find_path(   MBUS_INCLUDE_DIR             NAMES mbus/mbus.h
+	     REQUIRED             	  HINTS /opt/libmbus/include)
+find_library(MBUS_LIBRARY                 NAMES mbus
+             REQUIRED			  HINTS /opt/libmbus/lib)
 
 # Mosquitto library
-find_path(   MOSQUITTO_INCLUDE_DIR
-             NAMES mosquitto.h
+find_path(   MOSQUITTO_INCLUDE_DIR        NAMES mosquitto.h
 	     REQUIRED)
-find_library(MOSQUITTO_LIBRARY
-             NAMES mosquitto
+find_library(MOSQUITTO_LIBRARY            NAMES mosquitto
 	     REQUIRED)
 
 #mark_as_advanced(MBUS_INCLUDE_DIR MBUS_LIBRARY)
 
 
-add_definitions(-D_GNU_SOURCE)
+#
+# Dependencies
+#
 
- 
+# LVGL
+set(LV_CONF_BUILD_DISABLE_EXAMPLES 1)
+set(LV_CONF_BUILD_DISABLE_DEMOS    1)
+set(LV_CONF_PATH ${CMAKE_CURRENT_SOURCE_DIR}/src/lv_conf.h
+	         CACHE STRING "" FORCE)
+add_subdirectory(3rd/lvgl)
+
+
+###################################################################### 
 
 
 #
@@ -44,18 +66,17 @@ add_definitions(-D_GNU_SOURCE)
 add_executable(moses_watermeter src/watermeter.c src/common.c)
 target_include_directories(moses_watermeter PUBLIC ${MBUS_INCLUDE_DIR})
 target_include_directories(moses_watermeter PUBLIC ${MOSQUITTO_INCLUDE_DIR})
-target_compile_definitions(moses_watermeter PUBLIC WITH_LOG)
 target_compile_definitions(moses_watermeter PUBLIC PUT_CLOCK=CLOCK_REALTIME
 					           INTERVAL_CLOCK=CLOCK_REALTIME)
 #target_link_directories(moses_watermeter PUBLIC /opt/libmbus/lib)
 target_link_libraries(moses_watermeter ${MBUS_LIBRARY} ${MOSQUITTO_LIBRARY} m pthread)
 
 
+
 #
 # breaker
 #
 add_executable(moses_breaker src/breaker.c src/common.c)
-target_compile_definitions(moses_breaker PUBLIC WITH_LOG)
 target_compile_definitions(moses_breaker PUBLIC PUT_CLOCK=CLOCK_REALTIME
 					        INTERVAL_CLOCK=CLOCK_REALTIME)
 target_include_directories(moses_watermeter PUBLIC ${MOSQUITTO_INCLUDE_DIR})
@@ -91,19 +112,10 @@ target_link_libraries(moses_sensors m pthread ${MOSQUITTO_LIBRARY})
 
 
 
-
-#
-# LVGL
-#  
-set(LV_CONF_BUILD_DISABLE_EXAMPLES 1)
-set(LV_CONF_BUILD_DISABLE_DEMOS    1)
-set(LV_CONF_PATH ${CMAKE_CURRENT_SOURCE_DIR}/src/lv_conf.h
-	         CACHE STRING "" FORCE)
-add_subdirectory(3rd/lvgl)
-
 #
 # Main
 #
+
 add_executable(main src/main.c src/integration/rpi-automation-hat-mini.c)
 target_compile_options(main PUBLIC "-O3")
 

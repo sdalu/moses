@@ -81,6 +81,8 @@
  * Output                                                               *
  ************************************************************************/
 
+#ifdef WITH_PUT
+
 #ifndef PUT_LOCK
 #define PUT_LOCK()
 #endif
@@ -122,6 +124,12 @@
     } while(0)
 #endif
 
+#else
+
+#define PUT_DATA(type, fmt, ...)
+#define PUT_FAIL(type, failure)
+
+#endif
 
 
 /************************************************************************
