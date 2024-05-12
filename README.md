@@ -81,7 +81,7 @@ powered by the bus instead of draining its lithium battery
 
 Add in `/boot/config.txt`:
 ~~~
-gpio=26,op,pn,dh
+gpio=26=op,dh
 ~~~
 
 ### UART
@@ -138,8 +138,8 @@ with a small LCD, that can be used to display informations.
 
 Pin configuration is done in the `/boot/config.txt` file:
 ~~~
-gpio=9,op,dl
-gpio=25,op,dl
+gpio=9=op,dl
+gpio=25=op,dl
 ~~~
 
 We will also change some kernel parameters in `/boot/cmline.txt`, as
@@ -158,7 +158,7 @@ as output and driving low by default, keeping the valve open.
 Configuration is done in `/boot/config.txt`.
 
 ~~~
-gpio=16,op,dl
+gpio=16=op,dl
 ~~~
 
 The 24V need to be connect to the `COM` port, and the solenoid red wire to the
@@ -172,7 +172,7 @@ with the *mBus Master Hat*) to do some pulse counting (HRI white
 cable).
 
 ~~~
-gpio=20,ip,pu
+gpio=20=ip,pu
 ~~~
 
 
