@@ -179,6 +179,23 @@ gpio=20=ip,pu
 System configuration
 ====================
 
+WiFi
+----
+
+For stable low-latency WiFi power management must be disabled
+~~~sh
+iwconfig wlan0 power off
+~~~
+
+If using `/etc/network/interfaces` for the configuration:
+~~~
+auto wlan0
+iface wlan0 inet dhcp
+    pre-up ifconfig wlan0 hw ether aa:bb:cc:dd:ee:ff
+    pre-up iwconfig wlan0 power off
+    wpa-conf /etc/wpa_supplicant/wpa_supplicant.conf
+~~~
+
 Nut
 ---
 
