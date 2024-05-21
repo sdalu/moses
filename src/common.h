@@ -18,7 +18,12 @@
       .cfg.connection_max_retry = -1,				\
     }
 
-    
+#define MQTT_ADJUST_TOPIC(mqtt, _topic, prefix)	do {			\
+	char *str;							\
+	int rc = asprintf(&str, "%s/%s", prefix, (mqtt)->topic._topic);	\
+	assert(rc != -1);						\
+	(mqtt)->topic._topic = str;					\
+    } while(0)
 
 #define MQTT_ERROR_MSG(source, type, msg)			        \
     "{ "							        \

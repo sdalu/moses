@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.10)
 project(Moses)
 
+option(WITH_LOG "Enable log messages")
+option(WITH_PUT "Write one line data to output")
+set(MQTT_PREFIX "water-breaker" CACHE STRING "Prefix for topics")
+
 #
 # Common compiler options
 #
@@ -17,6 +21,9 @@ endif()
 if (WITH_PUT)
 add_compile_definitions(WITH_PUT)
 endif()
+
+add_compile_definitions(MQTT_PREFIX="${MQTT_PREFIX}")
+
 
 #
 # Directories

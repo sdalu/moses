@@ -476,8 +476,7 @@ mqtt_start(struct mqtt *mqtt)
 	LOG_ERRMQTT(rc, "starting MQTT loop failed");
 	return -1;
     }
-
-    LOG("STARTES");
+    
     // Done
     return 0;
 }

@@ -91,9 +91,9 @@ char *__progname = "??";
 struct watermeter watermeter =  {
     .mqtt     = {
 	.handler     = MQTT_INITIALIZER(),
-	.topic.pulse = "waterbreaker/pulse",
-	.topic.index = "waterbreaker/index",
-	.topic.error = "waterbreaker/error",
+	.topic.pulse = "pulse",
+	.topic.index = "index",
+	.topic.error = "error",
     },
     .pulse_counting = {
 	.ctrl.id   = NULL,
@@ -248,6 +248,18 @@ watermeter_mqtt_init(struct watermeter_mqtt *mqtt)
 {
     int rc;
     
+    // Adjust prefix
+    char *prefix = getenv("MQTT_PREFIX");
+    if (prefix == NULL)
+	prefix = MQTT_PREFIX;
+    MQTT_ADJUST_TOPIC(mqtt, pulse, prefix);
+    MQTT_ADJUST_TOPIC(mqtt, index, prefix);
+    MQTT_ADJUST_TOPIC(mqtt, error, prefix);
+    
+    LOG("MQTT pulse           : %s", mqtt->topic.pulse);
+    LOG("MQTT index           : %s", mqtt->topic.index);
+    LOG("MQTT error reporting : %s", mqtt->topic.error);
+
     // Initialise (0 = not enabled)
     rc = mqtt_init(&mqtt->handler, 0, NULL);
     if (rc <= 0) return rc;

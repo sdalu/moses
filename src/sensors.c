@@ -119,8 +119,8 @@ char *__progname = "??";
 struct sensors sensors = {
     .mqtt     = {
 	.handler         = MQTT_INITIALIZER(),
-	.topic.sensors   = "waterbreaker/sensors",
-	.topic.error     = "waterbreaker/error",
+	.topic.sensors   = "sensors",
+	.topic.error     = "error",
     },
     .bme280   = {
 	.dev = {
@@ -148,6 +148,16 @@ sensors_mqtt_init(struct sensors_mqtt *mqtt)
 {
     int rc;
     
+    // Adjust prefix
+    char *prefix = getenv("MQTT_PREFIX");
+    if (prefix == NULL)
+	prefix = MQTT_PREFIX;
+    MQTT_ADJUST_TOPIC(mqtt, sensors, prefix);
+    MQTT_ADJUST_TOPIC(mqtt, error,   prefix);
+    
+    LOG("MQTT sensors         : %s", mqtt->topic.sensors);
+    LOG("MQTT error reporting : %s", mqtt->topic.error);
+
     // Initialise (0 = not enabled)
     rc = mqtt_init(&mqtt->handler, 0, NULL);
     if (rc <= 0) return rc;

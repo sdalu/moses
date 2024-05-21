@@ -87,9 +87,9 @@ struct breaker {
 struct breaker breaker =  {
     .mqtt = {
 	.handler        = MQTT_INITIALIZER(),
-	.topic.setter   = "waterbreaker/state/set",
-	.topic.publish  = "waterbreaker/state",
-	.topic.error    = "waterbreaker/error",
+	.topic.setter   = "state/set",
+	.topic.publish  = "state",
+	.topic.error    = "error",
     },
     .control = {
 	.ctrl.id              = NULL,
@@ -213,6 +213,18 @@ breaker_mqtt_init(struct breaker_mqtt *mqtt)
 {
     int rc;
 
+    // Adjust prefix
+    char *prefix = getenv("MQTT_PREFIX");
+    if (prefix == NULL)
+	prefix = MQTT_PREFIX;
+    MQTT_ADJUST_TOPIC(mqtt, setter,  prefix);
+    MQTT_ADJUST_TOPIC(mqtt, publish, prefix);
+    MQTT_ADJUST_TOPIC(mqtt, error,   prefix);
+    
+    LOG("MQTT state           : %s", mqtt->topic.publish);
+    LOG("MQTT set state       : %s", mqtt->topic.setter);
+    LOG("MQTT error reporting : %s", mqtt->topic.error);
+
     // Initialise (0 = not enabled)
     rc = mqtt_init(&mqtt->handler, 1, &(struct mqtt_subscription) {
 	    .topic = mqtt->topic.setter,
@@ -228,6 +240,7 @@ breaker_mqtt_init(struct breaker_mqtt *mqtt)
 
     // Done
     LOG("MQTT connection established");
+
     return 0;
     
  failed:
