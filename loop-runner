@@ -1,0 +1,48 @@
+#!/bin/sh
+
+type="unknown"
+verbose=no
+stime=5
+
+curl=/usr/bin/curl
+sleep=/bin/sleep
+mpub=/usr/bin/mosquitto_pub
+
+while getopts "vt:" options ; do
+      case $options in
+          v) verbose="yes"   ;;
+          t) type="$OPTARG" ;;
+          s) stime="$OPTARG" ;;	  
+      esac
+done
+shift $((OPTIND-1))
+
+
+if [ "${verbose}" = "yes" ]; then
+    set -x
+fi
+
+stop() {
+    echo "Interruption requested!"
+    exit 0
+}
+
+trap 'stop' SIGINT SIGTERM
+
+while /bin/true ; do
+    echo "Starting process"
+    $*
+
+    echo "Notifying of unexpected end"
+    if [ -n "$MQTT_HOST" ]; then
+	$mpub -h ${MQTT_HOST} 					\
+	      ${MQTT_PORT:+-p}     ${MQTT_PORT}			\
+	      ${MQTT_USERNAME:+-u} ${MQTT_USERNAME}		\
+	      ${MQTT_PASSWORD:+-P} ${MQTT_PASSWORD}		\
+	      -t "${MQTT_PREFIX:-water-breaker}/error"		\
+	      -m "{ \"source\": \"$type\", \"type\": \"crash\", \"msg\": \"$type crashed, restarting in ${stime}s.\" }"
+    fi
+    
+    echo "Sleeping ${stime}s"
+    $sleep $stime
+done
