@@ -27,7 +27,7 @@ stop() {
     exit 0
 }
 
-trap 'stop' SIGINT SIGTERM
+trap 'stop' INT TERM
 
 while /bin/true ; do
     echo "Starting process"
