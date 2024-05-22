@@ -325,15 +325,15 @@ Build
 -----
 
 ~~~sh
-cmake -B build -DWITH_LOG=1 -DWITH_PUT=1 -DMQTT_PREFIX=water-breaker
+cmake -B build -DWITH_LOG=1 -DWITH_PUT=1 -DMQTT_TOPIC_PREFIX=water-breaker
 make  -C build
 ~~~
 
-| CMake options | Description                                                 |
-|---------------|-------------------------------------------------------------|
-| `WITH_LOG`    | Enable log messages                                         |
-| `WITH_PUT`    | Write one line data in a compatiblish InfluxDB format       |
-| `MQTT_PREFIX` | Change the default prefix applied to topic (`water-breaker`)|
+| CMake options       | Description                                                 |
+|---------------------|-------------------------------------------------------------|
+| `WITH_LOG`          | Enable log messages                                         |
+| `WITH_PUT`          | Write one line data in a compatiblish InfluxDB format       |
+| `MQTT_TOPIC_PREFIX` | Change the default prefix applied to topic (`water-breaker`)|
 
 
 If using MQTT the following environment variable must be defined:
@@ -344,7 +344,7 @@ If using MQTT the following environment variable must be defined:
 | `MQTT_PORT`          |          | Port number (default 1883) |
 | `MQTT_USERNAME`      |          | Username                   |
 | `MQTT_PASSWORD`      |          | Password                   |
-| `MQTT_PREFIX`        |          | Adjust topic               |
+| `MQTT_TOPIC_PREFIX`  |          | Adjust topic               |
 
 
 Three programs are available:
@@ -357,7 +357,7 @@ Example running them:
 
 ~~~
 export MQTT_HOST=127.0.0.1
-export MQTT_PREFIX=water-breaker/moses
+export MQTT_TOPIC_PREFIX=water-breaker/moses
 moses_watermeter -r -i 1min -I 1min -P rpi:38 -B pull-up -E rising 
 moses_breaker    -r -P rpi:36 -I 1min -M open-source
 moses_sensors    -r -i 1min 

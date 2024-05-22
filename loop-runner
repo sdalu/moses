@@ -39,7 +39,7 @@ while /bin/true ; do
 	      ${MQTT_PORT:+-p}     ${MQTT_PORT}			\
 	      ${MQTT_USERNAME:+-u} ${MQTT_USERNAME}		\
 	      ${MQTT_PASSWORD:+-P} ${MQTT_PASSWORD}		\
-	      -t "${MQTT_PREFIX:-water-breaker}/error"		\
+	      -t "${MQTT_TOPIC_PREFIX:-water-breaker}/error"	\
 	      -m "{ \"source\": \"$type\", \"type\": \"crash\", \"msg\": \"$type crashed, restarting in ${stime}s.\" }"
     fi
     

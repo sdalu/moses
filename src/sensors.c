@@ -149,9 +149,9 @@ sensors_mqtt_init(struct sensors_mqtt *mqtt)
     int rc;
     
     // Adjust prefix
-    char *prefix = getenv("MQTT_PREFIX");
+    char *prefix = getenv("MQTT_TOPIC_PREFIX");
     if (prefix == NULL)
-	prefix = MQTT_PREFIX;
+	prefix = MQTT_TOPIC_PREFIX;
     MQTT_ADJUST_TOPIC(mqtt, sensors, prefix);
     MQTT_ADJUST_TOPIC(mqtt, error,   prefix);
     

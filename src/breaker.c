@@ -214,9 +214,9 @@ breaker_mqtt_init(struct breaker_mqtt *mqtt)
     int rc;
 
     // Adjust prefix
-    char *prefix = getenv("MQTT_PREFIX");
+    char *prefix = getenv("MQTT_TOPIC_PREFIX");
     if (prefix == NULL)
-	prefix = MQTT_PREFIX;
+	prefix = MQTT_TOPIC_PREFIX;
     MQTT_ADJUST_TOPIC(mqtt, setter,  prefix);
     MQTT_ADJUST_TOPIC(mqtt, publish, prefix);
     MQTT_ADJUST_TOPIC(mqtt, error,   prefix);

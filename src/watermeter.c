@@ -249,9 +249,9 @@ watermeter_mqtt_init(struct watermeter_mqtt *mqtt)
     int rc;
     
     // Adjust prefix
-    char *prefix = getenv("MQTT_PREFIX");
+    char *prefix = getenv("MQTT_TOPIC_PREFIX");
     if (prefix == NULL)
-	prefix = MQTT_PREFIX;
+	prefix = MQTT_TOPIC_PREFIX;
     MQTT_ADJUST_TOPIC(mqtt, pulse, prefix);
     MQTT_ADJUST_TOPIC(mqtt, index, prefix);
     MQTT_ADJUST_TOPIC(mqtt, error, prefix);
