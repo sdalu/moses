@@ -179,6 +179,14 @@ gpio=20=ip,pu
 System configuration
 ====================
 
+Watchdog
+--------
+
+~~~sh
+apt install watchdog
+~~~
+
+
 WiFi
 ----
 
