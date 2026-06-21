@@ -487,9 +487,8 @@ make  -C build
 | `MQTT_TOPIC_PREFIX` | Change the default prefix applied to topic (`water-breaker`)|
 
 The three resulting executables (`moses_watermeter`, `moses_breaker`,
-`moses_sensors`) are produced under `build/bin/`. Their command-line
-options and MQTT topics are documented in the [Software](#software)
-section.
+`moses_sensors`) are produced under `bin/`. Their command-line options
+and MQTT topics are documented in the [Software](#software) section.
 
 Run
 ---
