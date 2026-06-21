@@ -5,29 +5,65 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
+
+# Least privilege: the job only needs to read the repository.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref (e.g. rapid pushes / PR updates).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         submodules: recursive
-    - name: Installing packaged dependencies
+
+    - name: Install packaged dependencies
       run: |
         sudo apt-get update
-        sudo apt-get -y install wget libmosquitto-dev libtool libtool-bin m4
-    - name: Installing mbus from source
+        sudo apt-get -y install libmosquitto-dev libtool libtool-bin m4
+
+    # Pinned commit recorded in the superproject, used as the cache key.
+    - name: Resolve libmbus revision
+      id: libmbus
+      run: echo "rev=$(git rev-parse HEAD:3rd/libmbus)" >> "$GITHUB_OUTPUT"
+
+    # Cache the libmbus install keyed on the pinned submodule commit, so
+    # it is only rebuilt when the submodule is bumped.
+    - name: Cache libmbus
+      id: cache-libmbus
+      uses: actions/cache@v4
+      with:
+        path: /opt/libmbus
+        key: libmbus-${{ runner.os }}-${{ steps.libmbus.outputs.rev }}
+
+    # Build the pinned submodule rather than re-cloning, so CI links the
+    # exact libmbus version the repository tracks.
+    - name: Build libmbus from submodule
+      if: steps.cache-libmbus.outputs.cache-hit != 'true'
+      working-directory: 3rd/libmbus
       run: |
-        git clone https://github.com/rscada/libmbus 
-        cd libmbus
         ./build.sh
         ./configure --prefix=/opt/libmbus
-        make 
+        make -j"$(nproc)"
         sudo make install
-    - name: Building
-      run: |
-        cmake -B build -DWITH_LOG=1 -DWITH_PUT=1
-        make -C build
+
+    - name: Configure
+      run: cmake -B build -DWITH_LOG=1 -DWITH_PUT=1
+
+    - name: Build
+      run: cmake --build build --parallel "$(nproc)"
+
+    - name: Upload executables
+      uses: actions/upload-artifact@v4
+      with:
+        name: moses-binaries
+        path: build/bin/
+        if-no-files-found: error
