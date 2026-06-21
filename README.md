@@ -475,7 +475,7 @@ Build and installation
 Prerequisites
 -------------
 
-A C23 compiler, [CMake](https://cmake.org/) (≥ 3.10) and the following
+A C23 compiler, [CMake](https://cmake.org/) (≥ 3.13) and the following
 libraries are required:
 
 * `libmosquitto-dev` — MQTT client (used by all three programs)
@@ -520,6 +520,7 @@ make  -C build
 |---------------------|-------------------------------------------------------------|
 | `WITH_LOG`          | Enable log messages on stderr                               |
 | `WITH_PUT`          | Also write each reading to stdout, one line in an InfluxDB-ish line-protocol format (`<measurement> <fields> <nanosecond-timestamp>`), handy for piping into a time-series database |
+| `WITH_GUI`          | Build the experimental LVGL interface (`main`). Off by default; needs a C++ compiler. The three daemons build with just a C compiler. |
 | `MQTT_TOPIC_PREFIX` | Change the default prefix applied to topic (`water-breaker`)|
 
 The three resulting executables (`moses_watermeter`, `moses_breaker`,
