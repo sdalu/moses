@@ -472,6 +472,42 @@ daemons.
 Build and installation
 ======================
 
+Prerequisites
+-------------
+
+A C23 compiler, [CMake](https://cmake.org/) (≥ 3.10) and the following
+libraries are required:
+
+* `libmosquitto-dev` — MQTT client (used by all three programs)
+* `libmbus` — M-Bus library (used by `moses_watermeter` only); see the
+  [libmbus](#libmbus) section for building it, as it is usually not
+  packaged. The build expects it under `/opt/libmbus`.
+
+The remaining dependencies (LVGL, BME280 sensor API and `bitters`) are
+bundled as git submodules under `3rd/`.
+
+On a Debian/Raspberry Pi OS host:
+
+~~~sh
+sudo apt install build-essential cmake libmosquitto-dev
+~~~
+
+Get the source
+--------------
+
+Clone the repository together with its submodules:
+
+~~~sh
+git clone --recursive https://github.com/sdalu/moses
+cd moses
+~~~
+
+If you already cloned without `--recursive`, fetch the submodules with:
+
+~~~sh
+git submodule update --init --recursive
+~~~
+
 Build
 -----
 
@@ -489,6 +525,22 @@ make  -C build
 The three resulting executables (`moses_watermeter`, `moses_breaker`,
 `moses_sensors`) are produced under `bin/`. Their command-line options
 and MQTT topics are documented in the [Software](#software) section.
+
+Install
+-------
+
+There is no `make install` target; copy the executables and the helper
+scripts where you want them, for instance:
+
+~~~sh
+sudo install -m 0755 bin/moses_watermeter bin/moses_breaker \
+                     bin/moses_sensors    /usr/local/bin
+sudo install -m 0755 loop-runner nut-notify /usr/local/bin
+~~~
+
+The daemons are meant to run continuously; supervise each one with
+[`loop-runner`](#supervision) so it is restarted on failure (and a crash
+is reported over MQTT).
 
 Run
 ---
