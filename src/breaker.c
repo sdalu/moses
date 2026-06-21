@@ -445,6 +445,13 @@ main(int argc, char **argv)
      * In this case we know it is 1 second before we start publishing.
      */
 
+    // Without an idle timeout we never re-publish periodically: the state is
+    // only published when it changes (from the MQTT callback thread), so just
+    // idle here instead of looping.
+    if (breaker.control.idle_timeout == 0) {
+	for (;;) pause();
+    }
+
     // Polling
     struct timespec next_polling;
     clock_gettime(INTERVAL_CLOCK, &next_polling);

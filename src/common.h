@@ -29,7 +29,7 @@
     "{ "							        \
       "\"source\"" ": \"" source  "\", "			        \
       "\"type\""   ": \"" type    "\", "			        \
-      "\"msg\""    ": \"" msg					        \
+      "\"msg\""    ": \"" msg    "\""			        \
     " }"
 
 #define MQTT_TOPIC_ENABLED(mqtt, _topic)				\
