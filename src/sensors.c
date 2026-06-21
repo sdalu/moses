@@ -69,12 +69,12 @@ static int
 bme280_i2c_read(uint8_t reg, uint8_t *data, uint32_t len, void *ptr)
 {
     const struct bme280_i2c *i2c = ptr;
-    const struct bitters_i2c_transfert xfr[] = {
+    const struct bitters_i2c_transfer xfr[] = {
         { .buf = &reg, .len = sizeof(reg), .write = 1, },
         { .buf = data, .len = len,         .read  = 1, },
     };
-    int rc = bitters_i2c_transfert(i2c->dev, i2c->addr,
-                                   xfr, __arraycount(xfr));
+    int rc = bitters_i2c_transfer(i2c->dev, i2c->addr,
+                                  xfr, __arraycount(xfr));
     return rc < 0 ? rc : 0;
 }
 
@@ -86,10 +86,10 @@ bme280_i2c_write(uint8_t reg, const uint8_t *data, uint32_t len, void *ptr)
     memcpy(buf + 1, data, len);   //   -> Use a temporary buffer
     
     const struct bme280_i2c *i2c = ptr;
-    const struct bitters_i2c_transfert xfr[] = {
+    const struct bitters_i2c_transfer xfr[] = {
         { .buf = buf, .len =  len + 1, .write = 1, },
     };
-    int rc = bitters_i2c_transfert(i2c->dev, i2c->addr,
+    int rc = bitters_i2c_transfer(i2c->dev, i2c->addr,
                                   xfr, __arraycount(xfr));
     return rc < 0 ? rc : 0;
 }
