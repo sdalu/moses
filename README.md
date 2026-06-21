@@ -307,11 +307,12 @@ MQTT_PASSWD="mqtt-pasword"
 # Path to commands
 MOSQUITTO_PUB=/usr/bin/mosquitto_pub
 
-# Notify
+# Notify (credential flags are only passed when set)
 ${MOSQUITTO_PUB}                                \
     -h "${MQTT_HOST}"                           \
-    -u "${MQTT_USER}"                           \
-    -P "${MQTT_PASSWD}"                         \
+    ${MQTT_PORT:+-p "${MQTT_PORT}"}             \
+    ${MQTT_USER:+-u "${MQTT_USER}"}             \
+    ${MQTT_PASSWD:+-P "${MQTT_PASSWD}"}         \
     -t "ups/${UPSNAME}/notify/${NOTIFYTYPE}"    \
     -m "$1"
 ~~~
