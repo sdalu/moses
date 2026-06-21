@@ -1,3 +1,22 @@
+/*
+ * moses_breaker -- drive the solenoid valve relay.
+ *
+ * Subscribes to the `state/set` topic and switches a GPIO output line
+ * accordingly, opening or closing the water supply valve. Accepted
+ * payloads are 0/1, off/on, false/true (case insensitive); see
+ * breaker_state[].
+ *
+ * The resulting state is echoed on the `state` topic whenever it
+ * changes. With --idle-timeout the current state is additionally
+ * re-published at that interval as a heartbeat (the last set-driven
+ * publish is taken into account so we don't publish twice in a row).
+ * Failures to drive the line are reported on the `error` topic.
+ *
+ * The valve is normally open (NO): driving the relay closes the water,
+ * so the line default keeps the valve open. Use --mode/--active to match
+ * the relay wiring. All topics are relative to MQTT_TOPIC_PREFIX.
+ */
+
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif

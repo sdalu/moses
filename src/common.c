@@ -1,3 +1,16 @@
+/*
+ * common.c -- code shared by the moses programs.
+ *
+ *   - Command-line option parsers (parse_*): baud rate, time periods,
+ *     GPIO pin specifications (`chip:pin`, with an `rpi:<header-pin>`
+ *     convenience mapping) and the various GPIO line flags.
+ *   - reduced_lattency(): switch to the SCHED_FIFO real-time scheduler
+ *     and lock memory, to keep pulse counting / valve control responsive.
+ *   - A thin MQTT wrapper around libmosquitto (mqtt_*): connection,
+ *     automatic reconnection with re-subscription, printf-style publish,
+ *     and configuration from the MQTT_* environment variables.
+ */
+
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdbool.h>

@@ -1,6 +1,28 @@
 Moses
 =====
 
+Moses is a do-it-yourself water-leak breaker built around a Raspberry
+Pi. It watches household water usage and can shut the main supply with a
+solenoid valve, so a leak does not turn into water damage. Everything is
+driven over [MQTT](https://mqtt.org/), so it integrates with existing
+home-automation setups (Home Assistant, Node-RED, …) without locking you
+into a proprietary cloud.
+
+It is made of three small C programs, each doing one job and talking to
+the MQTT broker:
+
+| Program            | Role                                                            |
+|--------------------|-----------------------------------------------------------------|
+| `moses_watermeter` | Read the water meter (M-Bus index and/or GPIO pulse counting)   |
+| `moses_breaker`    | Open/close the solenoid valve through a relay                   |
+| `moses_sensors`    | Read the optional BME280 (temperature, pressure, humidity)      |
+
+See [Software](#software) for the architecture and the MQTT interface,
+and [Build and installation](#build-and-installation) to compile and run
+them. The bulk of this document covers the hardware and the host system
+configuration.
+
+
 Hardware
 ========
 
@@ -326,6 +348,127 @@ apt install mosquitto-dev
 
 
 
+Software
+========
+
+Moses is split into three independent daemons that share a small support
+library (`src/common.c`). Each one is configured from the command line,
+reads its MQTT credentials from the environment, and publishes/subscribes
+under a common topic prefix (`MQTT_TOPIC_PREFIX`, default
+`water-breaker`).
+
+~~~
+                    +----------------------+
+   M-Bus ---------> |                      | --> <prefix>/index
+   pulse (GPIO) --> |  moses_watermeter    | --> <prefix>/pulse
+                    +----------------------+ --> <prefix>/error
+
+   <prefix>/state/set --> +----------------+
+                          | moses_breaker  | --> relay --> solenoid valve
+   <prefix>/state     <-- +----------------+ --> <prefix>/error
+
+                    +----------------------+
+   BME280 (I2C) --> |  moses_sensors       | --> <prefix>/sensors
+                    +----------------------+ --> <prefix>/error
+~~~
+
+The valve is *normally open*: `moses_breaker` only energises the relay
+to close the water, so a power loss or a crash leaves the supply open.
+The [`loop-runner`](#supervision) wrapper restarts a daemon if it dies
+and reports the crash over MQTT.
+
+
+MQTT topics
+-----------
+
+All topics are relative to `MQTT_TOPIC_PREFIX`.
+
+| Topic         | Direction | Producer / Consumer | Payload                                              |
+|---------------|-----------|---------------------|------------------------------------------------------|
+| `index`       | publish   | `moses_watermeter`  | Meter index in m³, e.g. `123.456`                    |
+| `pulse`       | publish   | `moses_watermeter`  | Number of pulses counted (`0` heartbeat on timeout)  |
+| `state`       | publish   | `moses_breaker`     | Current valve state, `0` (open) or `1` (closed)      |
+| `state/set`   | subscribe | `moses_breaker`     | Requested state: `0`/`1`, `off`/`on`, `false`/`true` |
+| `sensors`     | publish   | `moses_sensors`     | JSON `{ "temperature", "pressure", "humidity" }`     |
+| `error`       | publish   | all                 | JSON `{ "source", "type", "msg" }`                   |
+
+
+Common options
+--------------
+
+These apply to every daemon:
+
+| Option                  | Description                                                  |
+|-------------------------|--------------------------------------------------------------|
+| `-r`, `--reduced-latency` | Switch to the `SCHED_FIFO` real-time scheduler and lock memory (avoids missing pulses / delaying the valve). Usually needs root. |
+| `-h`, `--help`          | Show the program-specific usage.                             |
+
+GPIO pins are given as `chip:pin`, for instance `gpiochip0:16`. As a
+convenience `rpi:<n>` refers to physical header pin `n` and is mapped to
+the matching `gpiochip0` line, so `rpi:36` is the same as `gpiochip0:16`.
+
+
+### `moses_watermeter`
+
+| Option                  | Description                                          |
+|-------------------------|------------------------------------------------------|
+| `-d`, `--device=DEV`    | M-Bus serial device (default `/dev/ttyAMA0`)         |
+| `-b`, `--baudrate=N`    | M-Bus baud rate (300 … 38400, default 2400)          |
+| `-a`, `--address=ADDR`  | M-Bus primary or secondary address (default `1`)     |
+| `-i`, `--interval=SEC`  | Index polling/reporting interval (default 60s)       |
+| `-P`, `--pin=CTRL:PIN`  | GPIO line for pulse counting                         |
+| `-L`, `--pin-label=STR` | GPIO consumer label                                  |
+| `-D`, `--debounce=USEC` | GPIO hardware debounce time                          |
+| `-B`, `--bias=...`      | GPIO bias: `as-is`, `disabled`, `pull-up`, `pull-down` |
+| `-E`, `--edge=...`      | Counted edge: `rising` (default) or `falling`        |
+| `-I`, `--idle-timeout=SEC` | Publish a `0` pulse if nothing is seen within SEC |
+
+The M-Bus reader and the pulse counter are independent: provide `-d`
+(and/or rely on its default) to enable index reading, and `-P` to enable
+pulse counting. Either can be left out.
+
+
+### `moses_breaker`
+
+| Option                  | Description                                          |
+|-------------------------|------------------------------------------------------|
+| `-P`, `--pin=CTRL:PIN`  | GPIO line driving the relay (**required**)           |
+| `-L`, `--pin-label=STR` | GPIO consumer label                                  |
+| `-M`, `--mode=...`      | Output mode: `as-is`, `push-pull`, `open-drain`, `open-source` |
+| `-A`, `--active=...`    | Active level: `low` or `high`                        |
+| `-I`, `--idle-timeout=SEC` | Re-publish the current state every SEC (heartbeat) |
+
+
+### `moses_sensors`
+
+| Option                  | Description                                          |
+|-------------------------|------------------------------------------------------|
+| `-i`, `--interval=SEC`  | Publishing interval (default 60s)                    |
+| `-a`, `--altitude=M`    | Convert the reading to sea-level pressure for altitude M (meters) |
+
+
+Supervision
+-----------
+
+The daemons are meant to run forever and are not expected to exit. The
+[`loop-runner`](loop-runner) helper restarts a command when it stops and
+publishes a `crash` message on the `error` topic:
+
+~~~sh
+loop-runner -t watermeter -s 5 -- moses_watermeter -r -i 1min ...
+~~~
+
+| Option | Description                                         |
+|--------|-----------------------------------------------------|
+| `-t`   | Source name reported in the crash message           |
+| `-s`   | Seconds to wait before restarting (default 5)       |
+| `-v`   | Verbose (shell tracing)                             |
+
+It reads the same `MQTT_HOST`, `MQTT_PORT`, `MQTT_USERNAME`,
+`MQTT_PASSWORD` and `MQTT_TOPIC_PREFIX` environment variables as the
+daemons.
+
+
 Build and installation
 ======================
 
@@ -339,12 +482,19 @@ make  -C build
 
 | CMake options       | Description                                                 |
 |---------------------|-------------------------------------------------------------|
-| `WITH_LOG`          | Enable log messages                                         |
-| `WITH_PUT`          | Write one line data in a compatiblish InfluxDB format       |
+| `WITH_LOG`          | Enable log messages on stderr                               |
+| `WITH_PUT`          | Also write each reading to stdout, one line in an InfluxDB-ish line-protocol format (`<measurement> <fields> <nanosecond-timestamp>`), handy for piping into a time-series database |
 | `MQTT_TOPIC_PREFIX` | Change the default prefix applied to topic (`water-breaker`)|
 
+The three resulting executables (`moses_watermeter`, `moses_breaker`,
+`moses_sensors`) are produced under `build/bin/`. Their command-line
+options and MQTT topics are documented in the [Software](#software)
+section.
 
-If using MQTT the following environment variable must be defined:
+Run
+---
+
+If using MQTT the following environment variables must be defined:
 
 | Environment variable | Required | Comment                    |
 |----------------------|:--------:|----------------------------|
@@ -352,14 +502,11 @@ If using MQTT the following environment variable must be defined:
 | `MQTT_PORT`          |          | Port number (default 1883) |
 | `MQTT_USERNAME`      |          | Username                   |
 | `MQTT_PASSWORD`      |          | Password                   |
+| `MQTT_CLIENT_ID`     |          | Client identifier          |
 | `MQTT_TOPIC_PREFIX`  |          | Adjust topic               |
 
-
-Three programs are available:
-* `moses_watermeter`: read the watermeter
-* `moses_breaker`: command the solenoid valve
-* `moses_sensors`: read the BME280 sensor
-
+`MQTT_USERNAME` and `MQTT_PASSWORD` are read once at start-up and then
+unset, so they do not linger in the process environment.
 
 Example running them:
 

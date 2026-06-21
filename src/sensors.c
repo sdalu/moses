@@ -1,3 +1,15 @@
+/*
+ * moses_sensors -- read the environmental sensor.
+ *
+ * Polls a Bosch BME280 over I2C (through the bitters low-level library)
+ * every --interval seconds and publishes temperature (deg C), pressure
+ * (Pa) and humidity (%RH) as a JSON object on the `sensors` topic.
+ *
+ * When --altitude is given, the measured pressure is converted to the
+ * equivalent sea-level pressure. Read failures are reported on the
+ * `error` topic. All topics are relative to MQTT_TOPIC_PREFIX.
+ */
+
 #include <sys/cdefs.h>
 #include <stdbool.h>
 #include <stdlib.h>

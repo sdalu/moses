@@ -1,3 +1,26 @@
+/*
+ * moses_watermeter -- read the water meter and report consumption.
+ *
+ * Two independent and optional data sources run as separate threads:
+ *
+ *   - index_reader     Periodically queries the absolute meter index
+ *                      (total volume in m3) over M-Bus, using libmbus.
+ *                      Published on the `index` topic every --interval
+ *                      seconds.
+ *
+ *   - pulse_counting   Watches a GPIO line wired to the meter pulse
+ *                      output (e.g. Sensus HRI) and counts edge events
+ *                      via the Linux GPIO character device (uapi v2).
+ *                      The pulse count is published on the `pulse` topic.
+ *                      With --idle-timeout a `0` is published when no
+ *                      pulse is seen within the timeout, giving a
+ *                      regular heartbeat.
+ *
+ * Either source may be left unconfigured; only the configured ones are
+ * started. Read failures are reported on the `error` topic. All topics
+ * are relative to MQTT_TOPIC_PREFIX (see common.c).
+ */
+
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
