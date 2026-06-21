@@ -28,7 +28,7 @@ jobs:
     - name: Install packaged dependencies
       run: |
         sudo apt-get update
-        sudo apt-get -y install libmosquitto-dev libtool libtool-bin m4
+        sudo apt-get -y install libmosquitto-dev libtool libtool-bin libltdl-dev m4
 
     # Pinned commit recorded in the superproject, used as the cache key.
     - name: Resolve libmbus revision
