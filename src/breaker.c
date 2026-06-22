@@ -104,6 +104,8 @@ struct breaker {
 
 //== Global context ====================================================
 
+char *__progname = "??";
+
 struct breaker breaker =  {
     .mqtt = {
 	.handler        = MQTT_INITIALIZER(),
@@ -363,9 +365,6 @@ breaker_get_state(struct breaker *b) {
 
 
 //======================================================================
-
-char *__progname = "??";
-
 
 static void
 breaker_parse_config(int argc, char **argv, struct breaker *b)
