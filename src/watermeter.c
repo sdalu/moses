@@ -552,7 +552,7 @@ static void * index_reader_task(void *parameters) {
 	    static char *msg =
 		MQTT_ERROR_MSG("watermeter", "error",
 			       "failed to read index");
-	    MQTT_PUBLISH(mqtt, error, 1, false, msg);
+	    MQTT_PUBLISH(mqtt, error, 1, false, "%s", msg);
 	} else {
 	    PUT_DATA("watermeter", "index=%0.3f", value);
 	    MQTT_PUBLISH(mqtt, index, 1, false, "%0.3f", value);
@@ -605,7 +605,7 @@ static void * pulse_counting_task(void *parameters) {
 	    static char *msg =
 		MQTT_ERROR_MSG("watermeter", "error",
 			       "failed to read pulse");
-	    MQTT_PUBLISH(mqtt, error, 1, false, msg);
+	    MQTT_PUBLISH(mqtt, error, 1, false, "%s", msg);
 	    continue;
 	} else if (size % sizeof(struct gpio_v2_line_event)) {
 	    LOG("got event of unexpected size");

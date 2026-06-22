@@ -33,7 +33,7 @@ set(MQTT_TOPIC_PREFIX "water-breaker" CACHE STRING "Default prefix for topics")
 set(CMAKE_C_STANDARD          23)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-add_compile_options(-Wall -Wextra -Wpedantic)
+add_compile_options(-Wall -Wextra -Wpedantic -Wformat-security)
 add_compile_definitions(_GNU_SOURCE)
 
 if (WITH_LOG)

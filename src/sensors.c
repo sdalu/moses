@@ -378,7 +378,7 @@ int main(int argc, char *argv[]) {
 	    static char *msg =
 		MQTT_ERROR_MSG("environment", "error",
 			       "failed to read sensors values");
-	    MQTT_PUBLISH(mqtt, error, 1, false, msg);
+	    MQTT_PUBLISH(mqtt, error, 1, false, "%s", msg);
 	} else {
 	    if (! isnan(s->altitude))
 		pressure = sea_level_pressure(pressure, temperature,

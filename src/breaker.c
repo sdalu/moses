@@ -558,7 +558,7 @@ on_message(struct mosquitto *mosq, void *obj,
 	    PUT_FAIL(NICKNAME, "set-state");
 	    static char *msg = MQTT_ERROR_MSG(NICKNAME, "critical",
 					      "failed to set breaker state");
-	    MQTT_PUBLISH(mqtt, error, 2, false, msg);
+	    MQTT_PUBLISH(mqtt, error, 2, false, "%s", msg);
 
 	}
     }
