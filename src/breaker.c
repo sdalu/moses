@@ -52,6 +52,7 @@
 #include <mosquitto.h>
 
 #include "common.h"
+#include "breaker_state.h"
 
 #ifndef timespeccmp
 #define timespeccmp(tvp, uvp, cmp)                                      \
@@ -123,17 +124,6 @@ struct breaker breaker =  {
 	.pin.label            = "breaker-control",
     },
 };
-
-#define BREAKER_STATE(n, v) { n, sizeof(n) - 1, v }
-static struct breaker_state {
-    char *name;
-    int   namelen;
-    int   value;
-} breaker_state[] = { BREAKER_STATE("0",     0), BREAKER_STATE("1",     1),
-		      BREAKER_STATE("false", 0), BREAKER_STATE("true",  1), 
-		      BREAKER_STATE("off",   0), BREAKER_STATE("on",    1),
-};
-
 
 //== Mosquitto callbacks ===============================================
 /* QoS : 0 = no guaranty
@@ -512,24 +502,6 @@ main(int argc, char **argv)
 
     exit(0);
 }
-
-
-
-int breaker_parse_state(char *data, int datalen) {
-    // Look for NUL-char
-    if (strnlen(data, datalen) != (size_t)datalen)
-	return -1;
-
-    // State lookup
-    for (unsigned int i = 0 ; i < __arraycount(breaker_state) ; i++)
-	if ((breaker_state[i].namelen == datalen) && 
-	    (! strncasecmp(breaker_state[i].name, data, datalen)))
-	    return breaker_state[i].value;
-    return -1;
-}
-
-
-
 
 
 // Callback called when the client receives a message.

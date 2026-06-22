@@ -48,12 +48,6 @@ MQTT / integration
 - [ ] `nut-notify` hardcodes the `ups/...` topic and ignores
       `MQTT_TOPIC_PREFIX`, unlike the rest of the system.
 
-Build / CI
-----------
-
-- [ ] Extend the parser unit tests to cover `breaker_parse_state` (currently
-      untested because it lives in breaker.c with main(), not moses_common).
-
 Deployment / hardening
 ----------------------
 
@@ -66,5 +60,6 @@ Deployment / hardening
 Cleanup
 -------
 
-- [ ] `analog-inputs-blank.c` (~151 KB) sits at the repo root, unreferenced
-      by CMake. Move it under `3rd/`/`doc/` or remove it.
+- [ ] `analog-inputs-blank.c` (~151 KB) sits at the repo root. It is only
+      used by the experimental WITH_GUI target; move it under `src/` (or a
+      subdir) so the root is not cluttered, updating the CMake reference.

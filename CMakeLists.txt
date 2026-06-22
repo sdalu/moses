@@ -122,7 +122,7 @@ target_link_libraries(moses_watermeter PRIVATE moses_common ${MBUS_LIBRARY})
 #
 # Breaker -- drive the solenoid valve relay
 #
-add_executable(moses_breaker src/breaker.c)
+add_executable(moses_breaker src/breaker.c src/breaker_state.c)
 target_link_libraries(moses_breaker PRIVATE moses_common)
 
 #
@@ -139,8 +139,8 @@ target_link_libraries(moses_sensors PRIVATE moses_common bme280 bitters)
 # and is not warning-clean.
 #
 set(MOSES_SOURCES
-    src/common.c src/watermeter.c src/breaker.c src/sensors.c
-    test/test_parsers.c)
+    src/common.c src/watermeter.c src/breaker.c src/breaker_state.c src/sensors.c
+    test/test_parsers.c test/test_breaker_state.c)
 
 if (WITH_WERROR)
     set_property(SOURCE ${MOSES_SOURCES} APPEND PROPERTY COMPILE_OPTIONS -Werror)
@@ -159,9 +159,14 @@ endif()
 
 if (WITH_TESTS)
     enable_testing()
+
     add_executable(test_parsers test/test_parsers.c)
     target_link_libraries(test_parsers PRIVATE moses_common)
     add_test(NAME parsers COMMAND test_parsers)
+
+    add_executable(test_breaker_state test/test_breaker_state.c src/breaker_state.c)
+    target_include_directories(test_breaker_state PRIVATE src)
+    add_test(NAME breaker_state COMMAND test_breaker_state)
 endif()
 
 
