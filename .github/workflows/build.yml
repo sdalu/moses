@@ -64,6 +64,13 @@ jobs:
     - name: Test
       run: ctest --test-dir build --output-on-failure
 
+    # Separate build so a static-analysis finding is distinguishable from a
+    # plain build break. -fanalyzer is scoped to first-party sources.
+    - name: Static analysis (gcc -fanalyzer)
+      run: |
+        cmake -B build-analyze -DWITH_LOG=1 -DWITH_PUT=1 -DWITH_WERROR=1 -DWITH_ANALYZER=1
+        cmake --build build-analyze --parallel "$(nproc)"
+
     - name: Upload executables
       uses: actions/upload-artifact@v4
       with:

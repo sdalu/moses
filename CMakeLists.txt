@@ -21,8 +21,9 @@ endif()
 option(WITH_LOG "Enable log messages on stderr"                            OFF)
 option(WITH_PUT "Write each reading to stdout (line protocol)"            OFF)
 option(WITH_GUI "Build the experimental LVGL interface (needs a C++ compiler)" OFF)
-option(WITH_WERROR "Treat warnings as errors for moses code (CI)"          OFF)
-option(WITH_TESTS  "Build the unit tests"                                   ON)
+option(WITH_WERROR   "Treat warnings as errors for moses code (CI)"        OFF)
+option(WITH_ANALYZER "Run the GCC static analyzer on moses code (CI)"      OFF)
+option(WITH_TESTS    "Build the unit tests"                                ON)
 set(MQTT_TOPIC_PREFIX "water-breaker" CACHE STRING "Default prefix for topics")
 
 
@@ -137,11 +138,18 @@ target_link_libraries(moses_sensors PRIVATE moses_common bme280 bitters)
 # bitters submodule is compiled *inside* moses_sensors (INTERFACE library)
 # and is not warning-clean.
 #
+set(MOSES_SOURCES
+    src/common.c src/watermeter.c src/breaker.c src/sensors.c
+    test/test_parsers.c)
+
 if (WITH_WERROR)
-    set_property(SOURCE
-        src/common.c src/watermeter.c src/breaker.c src/sensors.c
-        test/test_parsers.c
-        APPEND PROPERTY COMPILE_OPTIONS -Werror)
+    set_property(SOURCE ${MOSES_SOURCES} APPEND PROPERTY COMPILE_OPTIONS -Werror)
+endif()
+
+# GCC static analyzer, scoped to first-party sources -- the bundled bitters
+# submodule (compiled inside moses_sensors) is not analyzer-clean.
+if (WITH_ANALYZER)
+    set_property(SOURCE ${MOSES_SOURCES} APPEND PROPERTY COMPILE_OPTIONS -fanalyzer)
 endif()
 
 

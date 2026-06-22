@@ -208,6 +208,7 @@ parse_gpio(const char *option, char **chip_id, uint32_t *pin_id)
     }
 
     if (chip_id) *chip_id = _chip_id;
+    else         free(_chip_id);
     if (pin_id ) *pin_id  = _pin_id;
 
     return 0;

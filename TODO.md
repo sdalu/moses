@@ -51,8 +51,6 @@ MQTT / integration
 Build / CI
 ----------
 
-- [ ] CI: add a static-analysis pass (`gcc -fanalyzer` or `cppcheck`).
-      (`-Werror` build is already wired in via WITH_WERROR.)
 - [ ] Extend the parser unit tests to cover `breaker_parse_state` (currently
       untested because it lives in breaker.c with main(), not moses_common).
 
