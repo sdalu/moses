@@ -7,10 +7,6 @@ within each group.
 Bugs / correctness
 ------------------
 
-- [ ] `rpi:` pin mapping is hardcoded to `gpiochip0` (common.c). On the
-      Raspberry Pi 5 the 40-pin header is on RP1 (`pinctrl-rp1`, usually
-      `gpiochip4`), so `rpi:<pin>` resolves to the wrong chip. Auto-detect
-      the chip by label, or at least document the limitation.
 - [ ] Period parsers (`parse_s_period` / `parse_us_period`) can silently
       overflow on the unit multiplication (e.g. a huge value times 604800).
 - [ ] `parse_idle_timeout` (common.c): drop the always-false `v > UINT64_MAX`

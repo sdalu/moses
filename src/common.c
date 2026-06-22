@@ -21,6 +21,9 @@
 #include <errno.h>
 #include <sched.h>
 #include <sys/mman.h>
+#include <sys/ioctl.h>
+#include <fcntl.h>
+#include <dirent.h>
 
 #include <linux/gpio.h>
 #include <mosquitto.h>
@@ -31,15 +34,54 @@
  * Raspberry PI GPIO defintions                                         *
  ************************************************************************/
 
-/* RPI gpio chipset */
-#define RPI_GPIO_CHIP		"gpiochip0"
-
 /* RPI pin mapping (-1 are power or ground pin) */
 static int rpi_pinmap[] = {
     -1, -1,  2, -1,  3, -1,  4, 14, -1, 15,
     17, 18, 27, -1, 22, 23, -1, 24, 10, -1,
      9, 25, 11,  8, -1,  7,  0,  1,  5, -1,
      6, 12, 13, -1, 19, 16, 26, 20, -1, 21 };
+
+/* Labels of the Raspberry Pi 40-pin header GPIO bank, by SoC. The device
+ * node number (gpiochipN) is not stable across models -- notably the Pi 5
+ * moved the header to the RP1 -- so the chip is resolved by label instead.
+ * The header pins are bank 0 (offsets matching rpi_pinmap) on all of them. */
+static const char *const rpi_chip_labels[] = {
+    "pinctrl-rp1",      // Pi 5      (RP1)
+    "pinctrl-bcm2711",  // Pi 4
+    "pinctrl-bcm2835",  // Pi 1-3, Zero
+};
+
+/* Return the /dev name (e.g. "gpiochip0") of the header GPIO bank, or NULL
+ * if not running on a recognized Raspberry Pi. Caller frees. */
+static char *
+rpi_gpio_chip(void)
+{
+    DIR *d = opendir("/dev");
+    if (d == NULL) return NULL;
+
+    char *found = NULL;
+    struct dirent *e;
+    while ((found == NULL) && ((e = readdir(d)) != NULL)) {
+	if (strncmp(e->d_name, "gpiochip", 8) != 0) continue;
+
+	char path[sizeof("/dev/") + sizeof(e->d_name)];
+	snprintf(path, sizeof(path), "/dev/%s", e->d_name);
+	int fd = open(path, O_RDONLY | O_CLOEXEC);
+	if (fd < 0) continue;
+
+	struct gpiochip_info info;
+	if (ioctl(fd, GPIO_GET_CHIPINFO_IOCTL, &info) == 0) {
+	    for (size_t i = 0; i < __arraycount(rpi_chip_labels); i++)
+		if (strcmp(info.label, rpi_chip_labels[i]) == 0) {
+		    found = strdup(e->d_name);
+		    break;
+		}
+	}
+	close(fd);
+    }
+    closedir(d);
+    return found;
+}
 
 
 /************************************************************************
@@ -146,10 +188,10 @@ parse_gpio(const char *option, char **chip_id, uint32_t *pin_id)
 
     if (strcmp(_chip_id, "rpi") == 0) {
 	free(_chip_id);
-	_chip_id = strdup(RPI_GPIO_CHIP);
-	if (_chip_id == NULL) return -1;
-	if ((_pin_id < 1) || (_pin_id > 40)) return -1;
-	if (rpi_pinmap[_pin_id - 1] < 0) return -1;
+	_chip_id = rpi_gpio_chip();
+	if (_chip_id == NULL) return -1;        // not a recognized Pi
+	if ((_pin_id < 1) || (_pin_id > 40)) goto failed;
+	if (rpi_pinmap[_pin_id - 1] < 0)     goto failed;
 	_pin_id = rpi_pinmap[_pin_id - 1];
     }
 
