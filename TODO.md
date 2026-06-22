@@ -16,18 +16,26 @@ Bugs / correctness
 Safety (valve controller)
 -------------------------
 
-- [ ] breaker: read the line back (`GPIO_V2_LINE_GET_VALUES_IOCTL`) after
-      driving it, and confirm before reporting success on `state`. Today it
-      records the *requested* value as truth.
-- [ ] Signal handling: trap SIGTERM/SIGINT in all three daemons for a clean
-      `mosquitto_disconnect` (and, for the breaker, optionally drive the
-      valve to a known-safe position) instead of relying on kernel GPIO
-      release + the MQTT last will.
 - [ ] Document the fail-safe behavior: on exit the kernel releases the GPIO
       line, de-energizing the relay; with a normally-open valve that means
       water flows (safe). Make this explicit in code/README.
 - [ ] `reduced_lattency()` ignores the return values of `sched_setscheduler`
       and `mlockall`; log when real-time setup fails.
+
+Considered and rejected:
+
+- GPIO line read-back after a write. A successful SET_VALUES ioctl already
+  means the SoC driver applied the register write; it cannot confirm the
+  relay/valve physically moved (no independent sensing), and it would
+  produce spurious failures in open-drain/open-source modes where the
+  read reflects the electrical level, not the driven request.
+- Signal handling for "graceful" shutdown. The MQTT last will already
+  fires on every ungraceful disconnect, which includes the default
+  SIGTERM termination (no handler = process dies = socket closes). A
+  clean `mosquitto_disconnect` would instead *suppress* the will, so a
+  naive handler is strictly worse. The NO valve also fails safe on
+  process death and the kernel releases the GPIO, so there is nothing to
+  clean up.
 
 MQTT / integration
 ------------------
@@ -47,13 +55,10 @@ MQTT / integration
 Build / CI
 ----------
 
-- [ ] Default `CMAKE_BUILD_TYPE` (e.g. RelWithDebInfo) when unset; a plain
-      `cmake -B build` currently compiles the latency-sensitive daemons at
-      -O0.
-- [ ] CI: add a `-Werror` build and a static-analysis pass (`gcc -fanalyzer`
-      or `cppcheck`).
-- [ ] Unit tests for the pure parsers (`parse_s_period`, `parse_gpio` incl.
-      the `rpi:` mapping, `breaker_parse_state`), wired into CI.
+- [ ] CI: add a static-analysis pass (`gcc -fanalyzer` or `cppcheck`).
+      (`-Werror` build is already wired in via WITH_WERROR.)
+- [ ] Extend the parser unit tests to cover `breaker_parse_state` (currently
+      untested because it lives in breaker.c with main(), not moses_common).
 
 Deployment / hardening
 ----------------------

@@ -62,6 +62,7 @@ struct bme280_i2c {
 static void
 bme280_delay_us(uint32_t period, void *ptr)
 {
+    (void)ptr;
     usleep(period);
 }
 

@@ -215,10 +215,10 @@ mbus_watermeter_get_index(mbus_handle *h, char *addr, double *index)
 	return -1;
 	
     mbus_data_variable        *data   = &reply_data.data_var;
-    mbus_data_variable_header *header = &data->header;
     int                        rc     = -1;
 
 #if 0
+    mbus_data_variable_header *header = &data->header;
     char manufacturer_id[sizeof("XYZ-12345678")] = { 0 };
     snprintf(manufacturer_id, sizeof(manufacturer_id), "%s-%08x",
 	     mbus_decode_manufacturer(header->manufacturer[0],
@@ -335,7 +335,7 @@ watermeter_init(struct watermeter *w)
     //
     // GPIO
     //
-    if ((pc->ctrl.id != NULL) || (pc->pin.id != ~0)) {
+    if ((pc->ctrl.id != NULL) || (pc->pin.id != ~0U)) {
 	char *devpath = NULL;
 	int   rc      = -EINVAL;
 	int   fd      = -1;
@@ -369,7 +369,7 @@ watermeter_init(struct watermeter *w)
 		  .attr.debounce_period_us = pc->debounce                  }
 	    }
 	};
-	strncpy(req.consumer, pc->pin.label, sizeof(req.consumer));
+	strncpy(req.consumer, pc->pin.label, sizeof(req.consumer) - 1);
 	
 	// Release memory
 	free(devpath);

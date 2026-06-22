@@ -56,10 +56,13 @@ jobs:
         sudo make install
 
     - name: Configure
-      run: cmake -B build -DWITH_LOG=1 -DWITH_PUT=1
+      run: cmake -B build -DWITH_LOG=1 -DWITH_PUT=1 -DWITH_WERROR=1
 
     - name: Build
       run: cmake --build build --parallel "$(nproc)"
+
+    - name: Test
+      run: ctest --test-dir build --output-on-failure
 
     - name: Upload executables
       uses: actions/upload-artifact@v4

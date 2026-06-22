@@ -195,7 +195,7 @@ breaker_control_init(struct breaker_control *bc)
 	    },
 	}
     };
-    strncpy(req.consumer, bc->pin.label, sizeof(req.consumer));
+    strncpy(req.consumer, bc->pin.label, sizeof(req.consumer) - 1);
     
     // Release memory
     free(devpath);
@@ -516,8 +516,8 @@ main(int argc, char **argv)
 
 
 int breaker_parse_state(char *data, int datalen) {
-    // Look for NUL-char 
-    if (strnlen(data, datalen) != datalen)
+    // Look for NUL-char
+    if (strnlen(data, datalen) != (size_t)datalen)
 	return -1;
 
     // State lookup
@@ -537,8 +537,10 @@ void
 on_message(struct mosquitto *mosq, void *obj,
 	   const struct mosquitto_message *msg)
 {
+    (void)obj;
     struct breaker_mqtt *mqtt = &breaker.mqtt;
     assert(mqtt->handler.mosq == mosq);
+    (void)mosq;   // otherwise unused when assert() is compiled out (NDEBUG)
 
     // Setter topic
     if (!strcmp(mqtt->topic.setter, msg->topic)) {

@@ -2,12 +2,27 @@ cmake_minimum_required(VERSION 3.13)
 project(Moses LANGUAGES C)
 
 #
+# Default build type: a plain `cmake -B build` otherwise compiles at -O0,
+# which is a poor default for the latency-sensitive daemons. Only applies to
+# single-config generators (Make/Ninja); multi-config ones pick per build.
+#
+get_property(_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if (NOT _multi_config AND NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
+                 Debug Release RelWithDebInfo MinSizeRel)
+endif()
+
+
+#
 # Options
 #
 
 option(WITH_LOG "Enable log messages on stderr"                            OFF)
 option(WITH_PUT "Write each reading to stdout (line protocol)"            OFF)
 option(WITH_GUI "Build the experimental LVGL interface (needs a C++ compiler)" OFF)
+option(WITH_WERROR "Treat warnings as errors for moses code (CI)"          OFF)
+option(WITH_TESTS  "Build the unit tests"                                   ON)
 set(MQTT_TOPIC_PREFIX "water-breaker" CACHE STRING "Default prefix for topics")
 
 
@@ -114,6 +129,32 @@ target_link_libraries(moses_breaker PRIVATE moses_common)
 #
 add_executable(moses_sensors src/sensors.c)
 target_link_libraries(moses_sensors PRIVATE moses_common bme280 bitters)
+
+
+#
+# Treat warnings as errors for first-party code only. -Werror is scoped to
+# our own source files rather than to the targets, because the bundled
+# bitters submodule is compiled *inside* moses_sensors (INTERFACE library)
+# and is not warning-clean.
+#
+if (WITH_WERROR)
+    set_property(SOURCE
+        src/common.c src/watermeter.c src/breaker.c src/sensors.c
+        test/test_parsers.c
+        APPEND PROPERTY COMPILE_OPTIONS -Werror)
+endif()
+
+
+######################################################################
+# Tests
+######################################################################
+
+if (WITH_TESTS)
+    enable_testing()
+    add_executable(test_parsers test/test_parsers.c)
+    target_link_libraries(test_parsers PRIVATE moses_common)
+    add_test(NAME parsers COMMAND test_parsers)
+endif()
 
 
 ######################################################################
