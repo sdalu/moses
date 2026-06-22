@@ -50,6 +50,10 @@ test_s_period(void)
     CHECK(parse_s_period("1w",   &v) == 0 && v == 604800);
     CHECK(parse_s_period("bad",  &v) <  0);
     CHECK(parse_s_period("5x",   &v) <  0);
+    // UINT64_MAX itself parses, but * 604800 (the "w" factor) overflows
+    CHECK(parse_s_period("18446744073709551615w", &v) < 0);
+    // value too large for strtoull (ERANGE)
+    CHECK(parse_s_period("99999999999999999999999", &v) < 0);
 }
 
 static void
@@ -63,6 +67,8 @@ test_us_period(void)
     CHECK(parse_us_period("2min", &v) == 0 && v == 120000000);
     CHECK(parse_us_period("1h",   &v) == 0 && v == 3600000000ull);
     CHECK(parse_us_period("nope", &v) <  0);
+    // UINT64_MAX itself parses, but * 3600000000 (the "h" factor) overflows
+    CHECK(parse_us_period("18446744073709551615h", &v) < 0);
 }
 
 static void

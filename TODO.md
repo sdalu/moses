@@ -7,8 +7,6 @@ within each group.
 Bugs / correctness
 ------------------
 
-- [ ] Period parsers (`parse_s_period` / `parse_us_period`) can silently
-      overflow on the unit multiplication (e.g. a huge value times 604800).
 - [ ] `parse_idle_timeout` (common.c): drop the always-false `v > UINT64_MAX`
       check; `v <= 0` can only ever mean `v == 0`. (cosmetic, no behavior
       change)

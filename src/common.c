@@ -115,18 +115,25 @@ parse_s_period(const char *option, uint64_t *val)
 {
     _Static_assert(sizeof(long long) ==	sizeof(uint64_t));
 
+    errno = 0;
     char    *end = NULL;
     uint64_t   v = strtoull(option, &end, 10);
     if ((v == ULLONG_MAX) && (errno != 0)) return -1;
 
-    if      (*end == '\0'           ) { v *=      1ull; }
-    else if (strcmp(end, "s"  ) == 0) { v *=      1ull; }
-    else if (strcmp(end, "min") == 0) { v *=     60ull; }
-    else if (strcmp(end, "h"  ) == 0) { v *=   3600ull; }
-    else if (strcmp(end, "d"  ) == 0) { v *=  86400ull; }
-    else if (strcmp(end, "w"  ) == 0) { v *= 604800ull; }
-    else                              { return -1;      }
-    
+    uint64_t mult;
+    if      (*end == '\0'           ) { mult =      1ull; }
+    else if (strcmp(end, "s"  ) == 0) { mult =      1ull; }
+    else if (strcmp(end, "min") == 0) { mult =     60ull; }
+    else if (strcmp(end, "h"  ) == 0) { mult =   3600ull; }
+    else if (strcmp(end, "d"  ) == 0) { mult =  86400ull; }
+    else if (strcmp(end, "w"  ) == 0) { mult = 604800ull; }
+    else                              { return -1;        }
+
+    // Overflow-checked multiply. __builtin_mul_overflow is GCC>=5 /
+    // Clang>=3.4; switch to the C23 ckd_mul() from <stdckdint.h> once the
+    // toolchain baseline (GCC 14+, Clang 18+) makes that header reliable.
+    if (__builtin_mul_overflow(v, mult, &v)) return -1;
+
     *val = v;
     return 0;
 }
@@ -137,18 +144,23 @@ parse_us_period(const char *option, uint64_t *val)
 {
     _Static_assert(sizeof(long long) ==	sizeof(uint64_t));
 
+    errno = 0;
     char    *end = NULL;
     uint64_t   v = strtoull(option, &end, 10);
     if ((v == ULLONG_MAX) && (errno != 0)) return -1;
 
-    if      (*end == '\0'           ) { v *=          1ull; }
-    else if (strcmp(end, "us" ) == 0) { v *=          1ull; } 
-    else if (strcmp(end, "ms" ) == 0) { v *=       1000ull; }
-    else if (strcmp(end, "s"  ) == 0) { v *=    1000000ull; }
-    else if (strcmp(end, "min") == 0) { v *=   60000000ull; }
-    else if (strcmp(end, "h"  ) == 0) { v *= 3600000000ull; }
-    else                              { return -1;          }
-    
+    uint64_t mult;
+    if      (*end == '\0'           ) { mult =          1ull; }
+    else if (strcmp(end, "us" ) == 0) { mult =          1ull; }
+    else if (strcmp(end, "ms" ) == 0) { mult =       1000ull; }
+    else if (strcmp(end, "s"  ) == 0) { mult =    1000000ull; }
+    else if (strcmp(end, "min") == 0) { mult =   60000000ull; }
+    else if (strcmp(end, "h"  ) == 0) { mult = 3600000000ull; }
+    else                              { return -1;            }
+
+    // Overflow-checked multiply (see parse_s_period for the ckd_mul note).
+    if (__builtin_mul_overflow(v, mult, &v)) return -1;
+
     *val = v;
     return 0;
 }
