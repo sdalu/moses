@@ -14,12 +14,12 @@ Bugs / correctness
 Safety (valve controller)
 -------------------------
 
-- [ ] Document the fail-safe behavior: on exit the kernel releases the GPIO
-      line, de-energizing the relay; with a normally-open valve that means
-      water flows (safe). Make this explicit in code/README.
-
 Considered and rejected:
 
+- TLS for MQTT. Deprioritized: this targets a LAN broker, and the cost of
+  rotating certificates yearly outweighs the benefit over an isolated
+  network. Credentials are still kept out of argv (env + unset). Revisit
+  if the broker is ever exposed beyond the local network.
 - GPIO line read-back after a write. A successful SET_VALUES ioctl already
   means the SoC driver applied the register write; it cannot confirm the
   relay/valve physically moved (no independent sensing), and it would
@@ -36,9 +36,6 @@ Considered and rejected:
 MQTT / integration
 ------------------
 
-- [ ] TLS support: `mqtt_start` connects in plaintext on 1883 and sends
-      credentials in the clear. Add `mosquitto_tls_set` (CA cert + 8883),
-      configured via env like the rest.
 - [ ] Decide on retained breaker `state` (deferred): pairs with the
       availability/LWT for fast reconnect, but can go stale — relies on a
       consumer wiring `state` to the availability topic.

@@ -15,6 +15,14 @@
  * The valve is normally open (NO): driving the relay closes the water,
  * so the line default keeps the valve open. Use --mode/--active to match
  * the relay wiring. All topics are relative to MQTT_TOPIC_PREFIX.
+ *
+ * Fail-safe: this program does not need to clean up on exit. When it stops
+ * -- normally, on a crash, or if killed -- the kernel releases the GPIO
+ * line, which de-energizes the relay; with the normally-open valve that
+ * lets water flow, i.e. it fails open (safe) rather than shutting the
+ * supply. There is therefore deliberately no signal handler driving the
+ * valve to a "safe" position on shutdown. (The broker also publishes the
+ * MQTT `availability` last will on any ungraceful disconnect.)
  */
 
 #ifndef _GNU_SOURCE
