@@ -305,6 +305,7 @@ sensors_parse_config(int argc, char **argv, struct sensors *s)
 	{ "reduced-latency", no_argument,	NULL, 'r' },
 	{ "interval",        required_argument, NULL, 'i' },
 	{ "altitude",        required_argument, NULL, 'a' },
+	{ "help",	     no_argument,	NULL, 'h' },
 	{ NULL }
     };
 
@@ -335,7 +336,7 @@ sensors_parse_config(int argc, char **argv, struct sensors *s)
 	    printf("  -i, --interval=SEC        publish sensors information every SEC\n");
 	    printf("  -a, --altitude=METERS     compute sea level pressure\n");
 	    printf("\n");
-	    exit(1);
+	    exit(0);
 	default:
 	    exit(1);
 	}
@@ -374,7 +375,7 @@ int main(int argc, char *argv[]) {
 	    PUT_FAIL("environment", "read");
 
 	    static char *msg =
-		MQTT_ERROR_MSG("breaker", "error",
+		MQTT_ERROR_MSG("environment", "error",
 			       "failed to read sensors values");
 	    MQTT_PUBLISH(mqtt, error, 1, false, msg);
 	} else {

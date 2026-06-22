@@ -90,6 +90,7 @@ struct breaker_mqtt {                   // MQTT
 	char *setter;
 	char *publish;
 	char *error;
+	char *avail;
     } topic;
 };
 
@@ -109,6 +110,7 @@ struct breaker breaker =  {
 	.topic.setter   = "state/set",
 	.topic.publish  = "state",
 	.topic.error    = "error",
+	.topic.avail    = "availability",
     },
     .control = {
 	.ctrl.id              = NULL,
@@ -239,10 +241,12 @@ breaker_mqtt_init(struct breaker_mqtt *mqtt)
     MQTT_ADJUST_TOPIC(mqtt, setter,  prefix);
     MQTT_ADJUST_TOPIC(mqtt, publish, prefix);
     MQTT_ADJUST_TOPIC(mqtt, error,   prefix);
-    
+    MQTT_ADJUST_TOPIC(mqtt, avail,   prefix);
+
     LOG("MQTT state           : %s", mqtt->topic.publish);
     LOG("MQTT set state       : %s", mqtt->topic.setter);
     LOG("MQTT error reporting : %s", mqtt->topic.error);
+    LOG("MQTT availability    : %s", mqtt->topic.avail);
 
     // Initialise (0 = not enabled)
     rc = mqtt_init(&mqtt->handler, 1, &(struct mqtt_subscription) {
@@ -250,7 +254,12 @@ breaker_mqtt_init(struct breaker_mqtt *mqtt)
 	    .qos   = 1,
 	});
     if (rc <= 0) return rc;
-    
+
+    // Advertise liveness: "online" on connect, "offline" as last will, so a
+    // crash or lost link is visible to Home Assistant et al.
+    mqtt_set_availability(&mqtt->handler, mqtt->topic.avail,
+			  "online", "offline", 1);
+
     mosquitto_message_callback_set(mqtt->handler.mosq, on_message);
 
     // Start
@@ -416,7 +425,7 @@ breaker_parse_config(int argc, char **argv, struct breaker *b)
 	    printf("  -A, --active=low|high            gpio active state\n");
 	    printf("  -I, --idle-timeout=SEC           notify state if no command send\n");
 	    printf("\n");
-	    exit(1);
+	    exit(0);
 	default:
 	    exit(1);
 	}

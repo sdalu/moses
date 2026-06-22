@@ -314,7 +314,19 @@ _mqtt_on_connect(struct mosquitto *mosq, void *obj, int reason_code)
 
     // Reset retry counter
     mqtt->connection_retry = mqtt->cfg.connection_max_retry;
-    
+
+    // Announce we are online (retained), so a freshly connecting client
+    // immediately knows the program is alive. Mirrors the last will set in
+    // mqtt_start(): the broker publishes the offline payload for us if the
+    // connection drops unexpectedly.
+    if (mqtt->avail.topic) {
+	int rc = mosquitto_publish(mosq, NULL, mqtt->avail.topic,
+				   strlen(mqtt->avail.online), mqtt->avail.online,
+				   mqtt->avail.qos, true);
+	if (rc != MOSQ_ERR_SUCCESS)
+	    LOG_ERRMQTT_PUBLISH(rc, mqtt->avail.topic);
+    }
+
     // Making subscriptions in the on_connect() callback means that if the
     // connection drops and is automatically resumed by the client,
     // then the subscriptions will be recreated when the client reconnects.
@@ -387,7 +399,20 @@ mqtt_destroy(struct mqtt *mqtt)
     mqtt->subcount = 0;
     return 0;
 }
-    
+
+
+// Configure an availability (online/offline) topic. The strings are borrowed,
+// not copied, so they must outlive the MQTT handler. Call before mqtt_start().
+void
+mqtt_set_availability(struct mqtt *mqtt, char *topic,
+		      char *online, char *offline, int qos)
+{
+    mqtt->avail.topic   = topic;
+    mqtt->avail.online  = online;
+    mqtt->avail.offline = offline;
+    mqtt->avail.qos     = qos;
+}
+
 
 
 int
@@ -474,7 +499,21 @@ mqtt_start(struct mqtt *mqtt)
 	LOG_ERRMQTT(rc, "failed to set username/password for MQTT");
 	return -1;
     }
-    
+
+    // Last will: the broker publishes the offline payload (retained) on our
+    // behalf if the connection drops without a clean disconnect. Must be set
+    // before connecting. The matching online payload is published from the
+    // on_connect callback.
+    if (mqtt->avail.topic) {
+	rc = mosquitto_will_set(mqtt->mosq, mqtt->avail.topic,
+				strlen(mqtt->avail.offline), mqtt->avail.offline,
+				mqtt->avail.qos, true);
+	if (rc != MOSQ_ERR_SUCCESS) {
+	    LOG_ERRMQTT(rc, "failed to set MQTT last will");
+	    return -1;
+	}
+    }
+
     // Connect
     rc = mosquitto_connect(mqtt->mosq,
 			   mqtt->cfg.host, mqtt->cfg.port, mqtt->cfg.keepalive);

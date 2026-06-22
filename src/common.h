@@ -176,12 +176,20 @@ struct mqtt_config {
     int      connection_max_retry;      // max retry (-1 = infinite)
 };
 
+struct mqtt_availability {              // Availability (LWT)
+    char *topic;                        //  - topic (NULL = disabled)
+    char *online;                       //  - payload published on connect
+    char *offline;                      //  - payload set as last will
+    int   qos;                          //  - QoS for both
+};
+
 struct mqtt {                           // MQTT
     struct mosquitto         *mosq;     //  - mosquitto handler
     struct mqtt_config        cfg;      //  - mosquitto config
     unsigned int              subcount; //  - subscription count
     struct mqtt_subscription *sub;      //  - subscription list
     int               connection_retry; //  - current retry
+    struct mqtt_availability  avail;    //  - availability (LWT)
 };
 
 struct mqtt_subscription {
@@ -209,8 +217,11 @@ mqtt_publish(struct mqtt *mqtt, const char *topic, int qos, bool retain,
 	     const char *fmt, ...);
 
 int mqtt_init(struct mqtt *mqtt, int subcount, struct mqtt_subscription *sub);
-int mqtt_start(struct mqtt *mqtt); 
+int mqtt_start(struct mqtt *mqtt);
 int mqtt_destroy(struct mqtt *mqtt);
+
+void mqtt_set_availability(struct mqtt *mqtt, char *topic,
+			   char *online, char *offline, int qos);
 
 void mqtt_config_from_env(struct mqtt *mqtt);
 
