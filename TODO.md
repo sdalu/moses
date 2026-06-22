@@ -17,8 +17,6 @@ Safety (valve controller)
 - [ ] Document the fail-safe behavior: on exit the kernel releases the GPIO
       line, de-energizing the relay; with a normally-open valve that means
       water flows (safe). Make this explicit in code/README.
-- [ ] `reduced_lattency()` ignores the return values of `sched_setscheduler`
-      and `mlockall`; log when real-time setup fails.
 
 Considered and rejected:
 
@@ -72,5 +70,3 @@ Cleanup
 
 - [ ] `analog-inputs-blank.c` (~151 KB) sits at the repo root, unreferenced
       by CMake. Move it under `3rd/`/`doc/` or remove it.
-- [ ] Fix spelling that leaks into the shared API: `reduced_lattency`
-      (latency), plus "Infered"/"lattency" in comments.

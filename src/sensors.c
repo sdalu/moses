@@ -364,7 +364,7 @@ int main(int argc, char *argv[]) {
     
     // Reducing latency
     if (sensors.reduced_latency)
-	reduced_lattency();
+	reduced_latency();
 
     // Polling
     struct timespec next_polling;

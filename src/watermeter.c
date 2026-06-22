@@ -55,7 +55,7 @@
 
 //== Constants =========================================================
 
-/* Infered from: uapi/linux/gpio.h */
+/* Inferred from: uapi/linux/gpio.h */
 #define MAX_EVENTS ((GPIO_V2_LINES_MAX) * 16)
 
 
@@ -636,7 +636,7 @@ main(int argc, char **argv)
 
     // Reducing latency
     if (watermeter.reduced_latency)
-	reduced_lattency();
+	reduced_latency();
 
     // Starting threads
     if (watermeter.pulse_counting.ctrl.id)

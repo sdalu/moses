@@ -4,7 +4,7 @@
  *   - Command-line option parsers (parse_*): baud rate, time periods,
  *     GPIO pin specifications (`chip:pin`, with an `rpi:<header-pin>`
  *     convenience mapping) and the various GPIO line flags.
- *   - reduced_lattency(): switch to the SCHED_FIFO real-time scheduler
+ *   - reduced_latency(): switch to the SCHED_FIFO real-time scheduler
  *     and lock memory, to keep pulse counting / valve control responsive.
  *   - A thin MQTT wrapper around libmosquitto (mqtt_*): connection,
  *     automatic reconnection with re-subscription, printf-style publish,
@@ -323,18 +323,23 @@ parse_gpio_active(const char *option, uint64_t *flags)
  ************************************************************************/
 
 void
-reduced_lattency(void)
+reduced_latency(void)
 {
-    LOG("configuring for reduced lattency");
-    
-    // Change scheduler priority to be more "real-time"
+    LOG("configuring for reduced latency");
+
+    // Change scheduler priority to be more "real-time". Best-effort: this
+    // needs CAP_SYS_NICE, so warn rather than abort when it is denied.
     struct sched_param sp = {
         .sched_priority = sched_get_priority_max(SCHED_FIFO),
     };
-    sched_setscheduler(0, SCHED_FIFO, &sp);
+    if (sched_setscheduler(0, SCHED_FIFO, &sp) < 0) {
+        LOG_ERRNO("failed to switch to SCHED_FIFO scheduler");
+    }
 
-    // Avoid swapping by locking page in memory
-    mlockall(MCL_CURRENT | MCL_FUTURE);
+    // Avoid swapping by locking pages in memory. Needs CAP_IPC_LOCK.
+    if (mlockall(MCL_CURRENT | MCL_FUTURE) < 0) {
+        LOG_ERRNO("failed to lock memory (mlockall)");
+    }
 }
 
 

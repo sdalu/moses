@@ -461,7 +461,7 @@ main(int argc, char **argv)
     
     // Reducing latency
     if (breaker.reduced_latency)
-	reduced_lattency();
+	reduced_latency();
 
 
     /* At this point the client is connected to the network socket, but may not

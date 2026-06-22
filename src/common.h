@@ -46,7 +46,9 @@
  ************************************************************************/
 
 #ifndef WITH_LOG
-#define LOG(x, ...)
+// Expand to a do/while so `if (cond) LOG(...);` is a real statement and
+// does not trip -Wempty-body when logging is compiled out.
+#define LOG(x, ...) do { } while (0)
 #endif
 
 #ifndef LOG
@@ -225,6 +227,6 @@ void mqtt_set_availability(struct mqtt *mqtt, char *topic,
 
 void mqtt_config_from_env(struct mqtt *mqtt);
 
-void reduced_lattency(void);
+void reduced_latency(void);
 
 #endif
