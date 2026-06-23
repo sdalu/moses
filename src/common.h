@@ -3,6 +3,10 @@
 
 #include <mosquitto.h>
 #include <stdio.h>
+#include <stdint.h>
+#include <time.h>
+
+struct gpio_v2_line_request;            // <linux/gpio.h>, only consumers need it
 
 /************************************************************************
  * Helpers                                                              *
@@ -226,6 +230,21 @@ void mqtt_set_availability(struct mqtt *mqtt, char *topic,
 			   char *online, char *offline, int qos);
 
 void mqtt_config_from_env(struct mqtt *mqtt);
+
+// Topic prefix from the MQTT_TOPIC_PREFIX environment variable, falling back
+// to the compiled-in default. Pass the result to MQTT_ADJUST_TOPIC().
+const char *mqtt_topic_prefix(void);
+
+// Open a single GPIO line on chip "/dev/<chip>". The caller fills req->config
+// (flags and attrs); this sets the single-line plumbing (num_lines, offset,
+// consumer label), issues GPIO_V2_GET_LINE_IOCTL and leaves the line fd in
+// req->fd. Returns the controller (chip) fd on success, -1 on failure.
+int gpio_open_line(const char *chip, uint32_t pin, const char *label,
+		   struct gpio_v2_line_request *req);
+
+// Sleep until the absolute deadline on the given clock, restarting if a signal
+// interrupts the wait.
+void sleep_until(clockid_t clock, const struct timespec *deadline);
 
 void reduced_latency(void);
 

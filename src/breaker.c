@@ -149,41 +149,16 @@ void on_message(struct mosquitto *mosq, void *obj, const struct mosquitto_messag
 int
 breaker_control_init(struct breaker_control *bc)
 {
-    char *devpath = NULL;
-    int   rc      = -EINVAL;
-    int   fd      = -1;
-    
     if (pthread_mutex_init(&bc->mutex, NULL) != 0) {
 	LOG_ERRNO("failed to create mutex");
-	goto failed_mutex;
+	return -1;
     }
-    
-    // Build device path
-    rc = asprintf(&devpath, "/dev/%s", bc->ctrl.id);
-    if (rc < 0) {
-	errno = ENOMEM;
-	LOG_ERRNO("unable to build path to device name");
-	goto failed_gpio;
-    }
-
-    // Open device
-    fd = open(devpath, O_RDONLY);
-    if (fd < 0) {
-	LOG_ERRNO("failed to open %s", devpath);
-	free(devpath);
-	goto failed_gpio;
-    }
-    LOG("controller device %s opened (fd=%d)", devpath, fd);
-
 
     // State
     bc->state = bc->pin.defval ? 1 : 0;
-    
-    // Get line (with a single gpio)
-    // 
+
+    // Single output line, driven to the default state on acquisition.
     struct gpio_v2_line_request req = {
-	.num_lines        = 1,
-	.offsets          = { [0] = bc->pin.id },
 	.config.flags     = GPIO_V2_LINE_FLAG_OUTPUT |  bc->pin.flags,
 	.config.num_attrs = 1,
 	.config.attrs     = {
@@ -193,37 +168,16 @@ breaker_control_init(struct breaker_control *bc)
 	    },
 	}
     };
-    strncpy(req.consumer, bc->pin.label, sizeof(req.consumer) - 1);
-    
-    // Release memory
-    free(devpath);
-    
-    // Save controller file descriptor
-    bc->ctrl.fd = fd;
-    
-    // Call ioctl
-    rc = ioctl(bc->ctrl.fd, GPIO_V2_GET_LINE_IOCTL, &req);
-    if (rc < 0) {
-	LOG_ERRNO("failed to issue GPIO_V2_GET_LINE IOCTL for pin %d",
-		  bc->pin.id);
-	goto failed_gpio;
-    }
-    
-    // Store file descriptor
-    bc->pin.fd = req.fd;
-    LOG("GPIO line configured as single output pin %d (fd=%d)",
-	bc->pin.id, bc->pin.fd);
-    
-    return 0;
 
- failed_gpio:
-    if (bc->ctrl.fd >= 0) close(bc->ctrl.fd);
-    if (bc->pin.fd  >= 0) close(bc->pin.fd );
-    bc->ctrl.fd = -1;
-    bc->pin.fd  = -1;
- failed_mutex:
-    pthread_mutex_destroy(&bc->mutex);
-    return -1;   
+    int ctrl_fd = gpio_open_line(bc->ctrl.id, bc->pin.id, bc->pin.label, &req);
+    if (ctrl_fd < 0) {
+	pthread_mutex_destroy(&bc->mutex);
+	return -1;
+    }
+
+    bc->ctrl.fd = ctrl_fd;
+    bc->pin.fd  = req.fd;
+    return 0;
 }
 
 
@@ -235,9 +189,7 @@ breaker_mqtt_init(struct breaker_mqtt *mqtt)
     int rc;
 
     // Adjust prefix
-    char *prefix = getenv("MQTT_TOPIC_PREFIX");
-    if (prefix == NULL)
-	prefix = MQTT_TOPIC_PREFIX;
+    const char *prefix = mqtt_topic_prefix();
     MQTT_ADJUST_TOPIC(mqtt, setter,  prefix);
     MQTT_ADJUST_TOPIC(mqtt, publish, prefix);
     MQTT_ADJUST_TOPIC(mqtt, error,   prefix);
@@ -500,12 +452,7 @@ main(int argc, char **argv)
     sleep:
 	// Next	polling
 	next_polling.tv_sec += breaker.control.idle_timeout;
-    sleep_again:
-	if (clock_nanosleep(INTERVAL_CLOCK, TIMER_ABSTIME,
-			    &next_polling, NULL) < 0) {
-	    assert(errno == EINTR);
-	    goto sleep_again;
-	}
+	sleep_until(INTERVAL_CLOCK, &next_polling);
     }
 
     exit(0);

@@ -162,9 +162,7 @@ sensors_mqtt_init(struct sensors_mqtt *mqtt)
     int rc;
     
     // Adjust prefix
-    char *prefix = getenv("MQTT_TOPIC_PREFIX");
-    if (prefix == NULL)
-	prefix = MQTT_TOPIC_PREFIX;
+    const char *prefix = mqtt_topic_prefix();
     MQTT_ADJUST_TOPIC(mqtt, sensors, prefix);
     MQTT_ADJUST_TOPIC(mqtt, error,   prefix);
     
@@ -396,13 +394,8 @@ int main(int argc, char *argv[]) {
 			 fmt, temperature, pressure, humidity);
 	}
 	
-	// Next	 
+	// Next
 	next_polling.tv_sec += s->interval;
-    sleep_again:
-	if (clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME,
-			    &next_polling, NULL) < 0) {
-	    assert(errno == EINTR);
-	    goto sleep_again;
-	}
+	sleep_until(CLOCK_REALTIME, &next_polling);
     }
 }

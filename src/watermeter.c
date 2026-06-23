@@ -272,9 +272,7 @@ watermeter_mqtt_init(struct watermeter_mqtt *mqtt)
     int rc;
     
     // Adjust prefix
-    char *prefix = getenv("MQTT_TOPIC_PREFIX");
-    if (prefix == NULL)
-	prefix = MQTT_TOPIC_PREFIX;
+    const char *prefix = mqtt_topic_prefix();
     MQTT_ADJUST_TOPIC(mqtt, pulse, prefix);
     MQTT_ADJUST_TOPIC(mqtt, index, prefix);
     MQTT_ADJUST_TOPIC(mqtt, error, prefix);
@@ -336,31 +334,8 @@ watermeter_init(struct watermeter *w)
     // GPIO
     //
     if ((pc->ctrl.id != NULL) || (pc->pin.id != ~0U)) {
-	char *devpath = NULL;
-	int   rc      = -EINVAL;
-	int   fd      = -1;
-	
-	// Build device path
-	rc = asprintf(&devpath, "/dev/%s", pc->ctrl.id);
-	if (rc < 0) {
-	    errno = ENOMEM;
-	    LOG_ERRNO("unable to build path to device name");
-	    goto failed_gpio;
-	}
-	
-	// Open device
-	fd = open(devpath, O_RDONLY);
-	if (fd < 0) {
-	    LOG_ERRNO("failed to open %s", devpath);
-	    free(devpath);
-	    goto failed_gpio;
-	}
-	LOG("controller device %s opened (fd=%d)", devpath, fd);
-	
-	// Get line (with a single gpio)
+	// Single input line, with optional hardware debounce.
 	struct gpio_v2_line_request req = {
-	    .num_lines        = 1,
-	    .offsets          = { [0] = pc->pin.id },
 	    .config.flags     = GPIO_V2_LINE_FLAG_INPUT | pc->pin.flags,
 	    .config.num_attrs = pc->flags.debounce ? 1 : 0,
 	    .config.attrs     = {
@@ -369,26 +344,14 @@ watermeter_init(struct watermeter *w)
 		  .attr.debounce_period_us = pc->debounce                  }
 	    }
 	};
-	strncpy(req.consumer, pc->pin.label, sizeof(req.consumer) - 1);
-	
-	// Release memory
-	free(devpath);
-	
-	// Save controller file descriptor
-	pc->ctrl.fd = fd;
-	
-	// Call ioctl
-	rc = ioctl(pc->ctrl.fd, GPIO_V2_GET_LINE_IOCTL, &req);
-	if (rc < 0) {
-	    LOG_ERRNO("failed to issue GPIO_V2_GET_LINE IOCTL for pin %d",
-		      pc->pin.id);
+
+	int ctrl_fd = gpio_open_line(pc->ctrl.id, pc->pin.id,
+				     pc->pin.label, &req);
+	if (ctrl_fd < 0)
 	    goto failed_gpio;
-	}
-	
-	// Store file descriptor
-	pc->pin.fd = req.fd;
-	LOG("GPIO line configured as single pin %d (fd=%d)",
-	    pc->pin.id, pc->pin.fd);
+
+	pc->ctrl.fd = ctrl_fd;
+	pc->pin.fd  = req.fd;
     } else {
 	LOG("GPIO line not defined (skipping)");
     }
@@ -558,14 +521,9 @@ static void * index_reader_task(void *parameters) {
 	    MQTT_PUBLISH(mqtt, index, 1, false, "%0.3f", value);
 	}
 	
-	// Next	 
+	// Next
 	next_polling.tv_sec += ir->interval;
-    sleep_again:
-	if (clock_nanosleep(INTERVAL_CLOCK, TIMER_ABSTIME,
-			    &next_polling, NULL) < 0) {
-	    assert(errno == EINTR);
-	    goto sleep_again;
-	}
+	sleep_until(INTERVAL_CLOCK, &next_polling);
     }
 }
 

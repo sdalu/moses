@@ -19,6 +19,8 @@
 #include <limits.h>
 #include <string.h>
 #include <errno.h>
+#include <assert.h>
+#include <time.h>
 #include <sched.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
@@ -81,6 +83,45 @@ rpi_gpio_chip(void)
     }
     closedir(d);
     return found;
+}
+
+
+int
+gpio_open_line(const char *chip, uint32_t pin, const char *label,
+	       struct gpio_v2_line_request *req)
+{
+    // Build device path "/dev/<chip>"
+    char *devpath = NULL;
+    if (asprintf(&devpath, "/dev/%s", chip) < 0) {
+	errno = ENOMEM;
+	LOG_ERRNO("unable to build path to device name");
+	return -1;
+    }
+
+    // Open the GPIO character device
+    int fd = open(devpath, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+	LOG_ERRNO("failed to open %s", devpath);
+	free(devpath);
+	return -1;
+    }
+    LOG("controller device %s opened (fd=%d)", devpath, fd);
+    free(devpath);
+
+    // The caller has filled req->config (flags/attrs); we own the
+    // single-line plumbing.
+    req->num_lines  = 1;
+    req->offsets[0] = pin;
+    strncpy(req->consumer, label, sizeof(req->consumer) - 1);
+
+    if (ioctl(fd, GPIO_V2_GET_LINE_IOCTL, req) < 0) {
+	LOG_ERRNO("failed to issue GPIO_V2_GET_LINE IOCTL for pin %u", pin);
+	close(fd);
+	return -1;
+    }
+    LOG("GPIO line configured as single pin %u (fd=%d)", pin, req->fd);
+
+    return fd;
 }
 
 
@@ -324,6 +365,19 @@ parse_gpio_active(const char *option, uint64_t *flags)
  ************************************************************************/
 
 void
+sleep_until(clockid_t clock, const struct timespec *deadline)
+{
+    // clock_nanosleep() returns 0 on success or a (positive) error number;
+    // it does not set errno. EINTR means a signal cut the wait short, so
+    // restart to honor the absolute deadline; anything else is a bug here.
+    int rc;
+    while ((rc = clock_nanosleep(clock, TIMER_ABSTIME, deadline, NULL)) != 0) {
+	assert(rc == EINTR);
+    }
+}
+
+
+void
 reduced_latency(void)
 {
     LOG("configuring for reduced latency");
@@ -507,6 +561,13 @@ mqtt_publish(struct mqtt *mqtt, const char *topic, int qos, bool retain,
     return rc;
 }
 	     
+const char *
+mqtt_topic_prefix(void)
+{
+    const char *prefix = getenv("MQTT_TOPIC_PREFIX");
+    return prefix ? prefix : MQTT_TOPIC_PREFIX;
+}
+
 void
 mqtt_config_from_env(struct mqtt *mqtt)
 {
