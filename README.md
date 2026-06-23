@@ -565,14 +565,17 @@ ctest --test-dir build --output-on-failure
 Install
 -------
 
-There is no `make install` target; copy the executables and the helper
-scripts where you want them, for instance:
+There is no `make install` target; copy the executables where you want
+them, for instance:
 
 ~~~sh
 sudo install -m 0755 bin/moses_watermeter bin/moses_breaker \
                      bin/moses_sensors    /usr/local/bin
-sudo install -m 0755 scripts/loop-runner scripts/nut-notify /usr/local/bin
 ~~~
+
+The helper scripts under `scripts/` (`loop-runner`, `nut-notify`) are
+optional; run them straight from the repository or copy them wherever
+suits your setup — they need no particular installation step.
 
 The daemons are meant to run continuously; supervise each one with
 [`loop-runner`](#supervision) so it is restarted on failure (and a crash
