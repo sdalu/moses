@@ -1,11 +1,20 @@
 #!/bin/sh
+#
+# loop-runner -- supervise a command: (re)start it forever and report every
+# unexpected exit on the shared MQTT `error` topic. Meant for the moses
+# daemons, which are not supposed to terminate.
+#
+# MQTT is taken from the environment (MQTT_HOST/PORT/USERNAME/PASSWORD and
+# MQTT_TOPIC_PREFIX); reporting is skipped when MQTT_HOST is unset.
+#
+set -u
 
 type="unknown"
 verbose=no
 stime=5
 
-sleep=/bin/sleep
-mpub=/usr/bin/mosquitto_pub
+: "${SLEEP:=/bin/sleep}"
+: "${MOSQUITTO_PUB:=/usr/bin/mosquitto_pub}"
 
 usage() {
     echo "Usage: ${0##*/} [-v] [-t type] [-s seconds] -- command [args...]" >&2
@@ -13,47 +22,63 @@ usage() {
 }
 
 while getopts "vt:s:" options ; do
-      case $options in
-          v) verbose="yes"       ;;
-          t) type="$OPTARG"       ;;
-          s) stime="$OPTARG"      ;;
-          *) usage                ;;
-      esac
+    case $options in
+        v) verbose=yes    ;;
+        t) type="$OPTARG" ;;
+        s) stime="$OPTARG";;
+        *) usage          ;;
+    esac
 done
 shift $((OPTIND-1))
 
-# A command to supervise is mandatory
+# A command to supervise is mandatory; the restart delay must be numeric.
 [ $# -ge 1 ] || usage
+case $stime in
+    ''|*[!0-9]*) echo "${0##*/}: -s expects a number of seconds" >&2; exit 2 ;;
+esac
 
-if [ "${verbose}" = "yes" ]; then
-    set -x
-fi
+[ "$verbose" = yes ] && set -x
 
+# Escape a string for safe inclusion inside a JSON double-quoted value.
+json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+# Publish a crash report on the shared error topic (no-op without MQTT_HOST).
+notify() {
+    [ -n "${MQTT_HOST:-}" ] || return 0
+    msg="{ \"source\": \"$(json_escape "$type")\", \"type\": \"crash\""
+    msg="$msg, \"msg\": \"$(json_escape "$1")\" }"
+    $MOSQUITTO_PUB -h "$MQTT_HOST"                     \
+        ${MQTT_PORT:+-p "$MQTT_PORT"}                  \
+        ${MQTT_USERNAME:+-u "$MQTT_USERNAME"}          \
+        ${MQTT_PASSWORD:+-P "$MQTT_PASSWORD"}          \
+        -t "${MQTT_TOPIC_PREFIX:-water-breaker}/error" \
+        -m "$msg"
+}
+
+# Stop supervising: terminate the child (if any) and leave.
+child=
 stop() {
-    echo "Interruption requested!"
+    echo "Interruption requested, stopping" >&2
+    [ -n "$child" ] && kill -TERM "$child" 2>/dev/null
     exit 0
 }
+trap stop INT TERM
 
-trap 'stop' INT TERM
-
-notify() {
-    [ -n "$MQTT_HOST" ] || return 0
-    $mpub -h "${MQTT_HOST}"                                    \
-          ${MQTT_PORT:+-p "${MQTT_PORT}"}                      \
-          ${MQTT_USERNAME:+-u "${MQTT_USERNAME}"}              \
-          ${MQTT_PASSWORD:+-P "${MQTT_PASSWORD}"}              \
-          -t "${MQTT_TOPIC_PREFIX:-water-breaker}/error"      \
-          -m "{ \"source\": \"$type\", \"type\": \"crash\", \"msg\": \"$1\" }"
-}
-
-while /bin/true ; do
+while : ; do
     echo "Starting process"
-    "$@"
+    # Run in the background and wait, so a signal to the supervisor can be
+    # forwarded to the child instead of leaving it orphaned.
+    "$@" &
+    child=$!
+    wait "$child"
     status=$?
+    child=
 
     echo "Notifying of unexpected end (exit ${status})"
     notify "$type exited with status ${status}, restarting in ${stime}s."
 
     echo "Sleeping ${stime}s"
-    $sleep "$stime"
+    $SLEEP "$stime"
 done

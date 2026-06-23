@@ -1,31 +1,39 @@
 #!/bin/sh
+#
+# nut-notify -- NUT NOTIFYCMD: forward a UPS event to MQTT.
+# NUT invokes it as `nut-notify "<message>"` with $NOTIFYTYPE / $UPSNAME set
+# in the environment, and publishes the message on ups/<ups>/notify/<type>.
+#
+set -u
 
-# -- Config ------------------------------------------------------------
+: "${MOSQUITTO_PUB:=/usr/bin/mosquitto_pub}"
+: "${MOSES_CONFIG:=/root/moses/config.yaml}"
 
-# That's bloody slow !!
-#   -> you better hardcode the values
-CONFIG_FILE=/root/moses/config.yaml
-MQTT_HOST=`  yq -r '.[":mqtt"][":host"]'     "${CONFIG_FILE}"`
-MQTT_PORT=`  yq -r '.[":mqtt"][":port"]'     "${CONFIG_FILE}"`
-MQTT_USER=`  yq -r '.[":mqtt"][":username"]' "${CONFIG_FILE}"`
-MQTT_PASSWD=`yq -r '.[":mqtt"][":password"]' "${CONFIG_FILE}"`
+# Read one key from the yaml config. This is slow, so it is only used as a
+# fallback below when the corresponding MQTT_* variable is not already set.
+yaml() { yq -r "$1" "$MOSES_CONFIG" 2>/dev/null; }
 
-# yq emits "null" for missing keys; treat that as unset
-for v in MQTT_PORT MQTT_USER MQTT_PASSWD ; do
+# Prefer MQTT_* from the environment; otherwise read the config file. With the
+# variables exported (e.g. from the moses environment) yq is never invoked.
+MQTT_HOST="${MQTT_HOST:-$(yaml '.[":mqtt"][":host"]')}"
+MQTT_PORT="${MQTT_PORT:-$(yaml '.[":mqtt"][":port"]')}"
+MQTT_USERNAME="${MQTT_USERNAME:-$(yaml '.[":mqtt"][":username"]')}"
+MQTT_PASSWORD="${MQTT_PASSWORD:-$(yaml '.[":mqtt"][":password"]')}"
+
+# yq prints "null" for missing keys; treat that as unset.
+for v in MQTT_HOST MQTT_PORT MQTT_USERNAME MQTT_PASSWORD ; do
     eval "[ \"\$$v\" = null ] && $v="
 done
 
-# ----------------------------------------------------------------------
-# $NOTIFYTYPE / $UPSNAME / $HOSTNAME
+# Nothing to publish to without a broker.
+[ -n "$MQTT_HOST" ] || { echo "${0##*/}: no MQTT host configured" >&2; exit 1; }
 
-# Path to commands
-MOSQUITTO_PUB=/usr/bin/mosquitto_pub
+: "${UPSNAME:=unknown}" "${NOTIFYTYPE:=unknown}"
 
-# Notify
-${MOSQUITTO_PUB}                                \
-    -h "${MQTT_HOST}"                           \
-    ${MQTT_PORT:+-p "${MQTT_PORT}"}             \
-    ${MQTT_USER:+-u "${MQTT_USER}"}             \
-    ${MQTT_PASSWD:+-P "${MQTT_PASSWD}"}         \
-    -t "ups/${UPSNAME}/notify/${NOTIFYTYPE}"    \
-    -m "$1"
+exec "$MOSQUITTO_PUB"                          \
+    -h "$MQTT_HOST"                            \
+    ${MQTT_PORT:+-p "$MQTT_PORT"}              \
+    ${MQTT_USERNAME:+-u "$MQTT_USERNAME"}      \
+    ${MQTT_PASSWORD:+-P "$MQTT_PASSWORD"}      \
+    -t "ups/${UPSNAME}/notify/${NOTIFYTYPE}"   \
+    -m "${1:-}"
