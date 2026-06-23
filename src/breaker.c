@@ -186,8 +186,6 @@ breaker_control_init(struct breaker_control *bc)
 int
 breaker_mqtt_init(struct breaker_mqtt *mqtt)
 {
-    int rc;
-
     // Adjust prefix
     const char *prefix = mqtt_topic_prefix();
     MQTT_ADJUST_TOPIC(mqtt, setter,  prefix);
@@ -200,32 +198,16 @@ breaker_mqtt_init(struct breaker_mqtt *mqtt)
     LOG("MQTT error reporting : %s", mqtt->topic.error);
     LOG("MQTT availability    : %s", mqtt->topic.avail);
 
-    // Initialise (0 = not enabled)
-    rc = mqtt_init(&mqtt->handler, 1, &(struct mqtt_subscription) {
+    // Subscribe to the setter topic, advertise liveness and route incoming
+    // commands to on_message (0 = MQTT disabled).
+    int rc = mqtt_connect(&mqtt->handler, 1, &(struct mqtt_subscription) {
 	    .topic = mqtt->topic.setter,
 	    .qos   = 1,
-	});
-    if (rc <= 0) return rc;
-
-    // Advertise liveness: "online" on connect, "offline" as last will, so a
-    // crash or lost link is visible to Home Assistant et al.
-    mqtt_set_availability(&mqtt->handler, mqtt->topic.avail,
-			  "online", "offline", 1);
-
-    mosquitto_message_callback_set(mqtt->handler.mosq, on_message);
-
-    // Start
-    rc = mqtt_start(&mqtt->handler);
-    if (rc < 0) goto failed;
-
-    // Done
-    LOG("MQTT connection established");
+	}, mqtt->topic.avail, on_message);
+    if (rc < 0) return -1;
+    if (rc > 0) LOG("MQTT connection established");
 
     return 0;
-    
- failed:
-    mqtt_destroy(&mqtt->handler);
-    return -1;
 }
 
 int breaker_init(struct breaker *b) {

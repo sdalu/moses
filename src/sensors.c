@@ -112,6 +112,7 @@ struct sensors_mqtt {
     struct {
 	char *sensors;
 	char *error;
+	char *avail;
     } topic;
 };
 
@@ -134,6 +135,7 @@ struct sensors sensors = {
 	.handler         = MQTT_INITIALIZER(),
 	.topic.sensors   = "sensors",
 	.topic.error     = "error",
+	.topic.avail     = "availability",
     },
     .bme280   = {
 	.dev = {
@@ -159,31 +161,21 @@ struct sensors sensors = {
 int
 sensors_mqtt_init(struct sensors_mqtt *mqtt)
 {
-    int rc;
-    
     // Adjust prefix
     const char *prefix = mqtt_topic_prefix();
     MQTT_ADJUST_TOPIC(mqtt, sensors, prefix);
     MQTT_ADJUST_TOPIC(mqtt, error,   prefix);
-    
+    MQTT_ADJUST_TOPIC(mqtt, avail,   prefix);
+
     LOG("MQTT sensors         : %s", mqtt->topic.sensors);
     LOG("MQTT error reporting : %s", mqtt->topic.error);
+    LOG("MQTT availability    : %s", mqtt->topic.avail);
 
-    // Initialise (0 = not enabled)
-    rc = mqtt_init(&mqtt->handler, 0, NULL);
-    if (rc <= 0) return rc;
-    
-    // Start
-    rc = mqtt_start(&mqtt->handler);
-    if (rc < 0) goto failed;
+    int rc = mqtt_connect(&mqtt->handler, 0, NULL, mqtt->topic.avail, NULL);
+    if (rc < 0) return -1;
+    if (rc > 0) LOG("MQTT connection established");
 
-    // Done
-    LOG("MQTT connection established");
     return 0;
-    
- failed:
-    mqtt_destroy(&mqtt->handler);
-    return -1;
 }
 
 

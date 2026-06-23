@@ -96,6 +96,7 @@ struct watermeter_mqtt {          // MQTT
 	char *pulse;
 	char *index;
 	char *error;
+	char *avail;
     } topic;
 };
 
@@ -117,6 +118,7 @@ struct watermeter watermeter =  {
 	.topic.pulse = "pulse",
 	.topic.index = "index",
 	.topic.error = "error",
+	.topic.avail = "availability",
     },
     .pulse_counting = {
 	.ctrl.id   = NULL,
@@ -269,33 +271,23 @@ mbus_watermeter_get_index(mbus_handle *h, char *addr, double *index)
 int
 watermeter_mqtt_init(struct watermeter_mqtt *mqtt)
 {
-    int rc;
-    
     // Adjust prefix
     const char *prefix = mqtt_topic_prefix();
     MQTT_ADJUST_TOPIC(mqtt, pulse, prefix);
     MQTT_ADJUST_TOPIC(mqtt, index, prefix);
     MQTT_ADJUST_TOPIC(mqtt, error, prefix);
-    
+    MQTT_ADJUST_TOPIC(mqtt, avail, prefix);
+
     LOG("MQTT pulse           : %s", mqtt->topic.pulse);
     LOG("MQTT index           : %s", mqtt->topic.index);
     LOG("MQTT error reporting : %s", mqtt->topic.error);
+    LOG("MQTT availability    : %s", mqtt->topic.avail);
 
-    // Initialise (0 = not enabled)
-    rc = mqtt_init(&mqtt->handler, 0, NULL);
-    if (rc <= 0) return rc;
-    
-    // Start
-    rc = mqtt_start(&mqtt->handler);
-    if (rc < 0) goto failed;
+    int rc = mqtt_connect(&mqtt->handler, 0, NULL, mqtt->topic.avail, NULL);
+    if (rc < 0) return -1;
+    if (rc > 0) LOG("MQTT connection established");
 
-    // Done
-    LOG("MQTT connection established");
     return 0;
-    
- failed:
-    mqtt_destroy(&mqtt->handler);
-    return -1;
 }
 
 

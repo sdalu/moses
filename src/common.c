@@ -458,7 +458,8 @@ _mqtt_on_connect(struct mosquitto *mosq, void *obj, int reason_code)
 
 
 int
-mqtt_init(struct mqtt *mqtt, int subcount, struct mqtt_subscription *sub)
+mqtt_init(struct mqtt *mqtt, unsigned int subcount,
+	  struct mqtt_subscription *sub)
 {
     // Sanity check
     if (mqtt->cfg.host == NULL) {
@@ -525,6 +526,34 @@ mqtt_set_availability(struct mqtt *mqtt, char *topic,
     mqtt->avail.online  = online;
     mqtt->avail.offline = offline;
     mqtt->avail.qos     = qos;
+}
+
+
+int
+mqtt_connect(struct mqtt *mqtt,
+	     unsigned int subcount, struct mqtt_subscription *sub,
+	     char *avail_topic, mqtt_message_cb on_message)
+{
+    // Create the client and register subscriptions (0 = MQTT disabled).
+    int rc = mqtt_init(mqtt, subcount, sub);
+    if (rc <= 0)
+	return rc;
+
+    // Advertise liveness: "online" on connect, "offline" as last will, so a
+    // crash or lost link is visible to Home Assistant et al.
+    if (avail_topic)
+	mqtt_set_availability(mqtt, avail_topic, "online", "offline", 1);
+
+    if (on_message)
+	mosquitto_message_callback_set(mqtt->mosq, on_message);
+
+    // Connect and start the background network loop.
+    if (mqtt_start(mqtt) < 0) {
+	mqtt_destroy(mqtt);
+	return -1;
+    }
+
+    return 1;
 }
 
 

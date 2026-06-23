@@ -222,12 +222,24 @@ int __attribute__ ((format(printf, 5, 6)))
 mqtt_publish(struct mqtt *mqtt, const char *topic, int qos, bool retain,
 	     const char *fmt, ...);
 
-int mqtt_init(struct mqtt *mqtt, int subcount, struct mqtt_subscription *sub);
+int mqtt_init(struct mqtt *mqtt, unsigned int subcount,
+	      struct mqtt_subscription *sub);
 int mqtt_start(struct mqtt *mqtt);
 int mqtt_destroy(struct mqtt *mqtt);
 
 void mqtt_set_availability(struct mqtt *mqtt, char *topic,
 			   char *online, char *offline, int qos);
+
+typedef void (*mqtt_message_cb)(struct mosquitto *mosq, void *obj,
+				const struct mosquitto_message *msg);
+
+// init + (optional availability LWT) + (optional message callback) + start,
+// destroying the handler on failure. avail_topic / on_message may be NULL.
+// Returns 1 when connected, 0 when MQTT is disabled (no host configured),
+// or -1 on error.
+int mqtt_connect(struct mqtt *mqtt,
+		 unsigned int subcount, struct mqtt_subscription *sub,
+		 char *avail_topic, mqtt_message_cb on_message);
 
 void mqtt_config_from_env(struct mqtt *mqtt);
 
