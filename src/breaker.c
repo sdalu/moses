@@ -183,10 +183,12 @@ breaker_mqtt_init(struct breaker_mqtt *mqtt)
     MQTT_ADJUST_TOPIC(mqtt, error,   prefix);
     MQTT_ADJUST_TOPIC(mqtt, avail,   prefix);
 
-    LOG("MQTT state           : %s", mqtt->topic.publish);
-    LOG("MQTT set state       : %s", mqtt->topic.setter);
-    LOG("MQTT error reporting : %s", mqtt->topic.error);
-    LOG("MQTT availability    : %s", mqtt->topic.avail);
+    if (mqtt_enabled(&mqtt->handler)) {
+	LOG("MQTT state           : %s", mqtt->topic.publish);
+	LOG("MQTT set state       : %s", mqtt->topic.setter);
+	LOG("MQTT error reporting : %s", mqtt->topic.error);
+	LOG("MQTT availability    : %s", mqtt->topic.avail);
+    }
 
     // Subscribe to the setter topic, advertise liveness and route incoming
     // commands to on_message (0 = MQTT disabled).

@@ -243,6 +243,10 @@ int mqtt_connect(struct mqtt *mqtt,
 
 void mqtt_config_from_env(struct mqtt *mqtt);
 
+// True when MQTT is configured (a host is set). When false the daemon runs
+// without publishing, so the topic plumbing and logging can be skipped.
+bool mqtt_enabled(const struct mqtt *mqtt);
+
 // Topic prefix from the MQTT_TOPIC_PREFIX environment variable, falling back
 // to the compiled-in default. Pass the result to MQTT_ADJUST_TOPIC().
 const char *mqtt_topic_prefix(void);

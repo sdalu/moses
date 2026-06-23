@@ -590,6 +590,12 @@ mqtt_publish(struct mqtt *mqtt, const char *topic, int qos, bool retain,
     return rc;
 }
 	     
+bool
+mqtt_enabled(const struct mqtt *mqtt)
+{
+    return mqtt->cfg.host != NULL;
+}
+
 const char *
 mqtt_topic_prefix(void)
 {

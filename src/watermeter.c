@@ -270,10 +270,12 @@ watermeter_mqtt_init(struct watermeter_mqtt *mqtt)
     MQTT_ADJUST_TOPIC(mqtt, error, prefix);
     MQTT_ADJUST_TOPIC(mqtt, avail, prefix);
 
-    LOG("MQTT pulse           : %s", mqtt->topic.pulse);
-    LOG("MQTT index           : %s", mqtt->topic.index);
-    LOG("MQTT error reporting : %s", mqtt->topic.error);
-    LOG("MQTT availability    : %s", mqtt->topic.avail);
+    if (mqtt_enabled(&mqtt->handler)) {
+	LOG("MQTT pulse           : %s", mqtt->topic.pulse);
+	LOG("MQTT index           : %s", mqtt->topic.index);
+	LOG("MQTT error reporting : %s", mqtt->topic.error);
+	LOG("MQTT availability    : %s", mqtt->topic.avail);
+    }
 
     int rc = mqtt_connect(&mqtt->handler, 0, NULL, mqtt->topic.avail, NULL);
     if (rc < 0) return -1;

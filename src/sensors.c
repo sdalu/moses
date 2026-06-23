@@ -167,9 +167,11 @@ sensors_mqtt_init(struct sensors_mqtt *mqtt)
     MQTT_ADJUST_TOPIC(mqtt, error,   prefix);
     MQTT_ADJUST_TOPIC(mqtt, avail,   prefix);
 
-    LOG("MQTT sensors         : %s", mqtt->topic.sensors);
-    LOG("MQTT error reporting : %s", mqtt->topic.error);
-    LOG("MQTT availability    : %s", mqtt->topic.avail);
+    if (mqtt_enabled(&mqtt->handler)) {
+	LOG("MQTT sensors         : %s", mqtt->topic.sensors);
+	LOG("MQTT error reporting : %s", mqtt->topic.error);
+	LOG("MQTT availability    : %s", mqtt->topic.avail);
+    }
 
     int rc = mqtt_connect(&mqtt->handler, 0, NULL, mqtt->topic.avail, NULL);
     if (rc < 0) return -1;
