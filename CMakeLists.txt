@@ -23,7 +23,7 @@ option(WITH_PUT "Write each reading to stdout (line protocol)"            OFF)
 option(WITH_GUI "Build the experimental LVGL interface (needs a C++ compiler)" OFF)
 option(WITH_WERROR   "Treat warnings as errors for moses code (CI)"        OFF)
 option(WITH_ANALYZER "Run the GCC static analyzer on moses code (CI)"      OFF)
-option(WITH_TESTS    "Build the unit tests"                                ON)
+option(WITH_TESTS    "Build the unit tests"                                OFF)
 set(MQTT_TOPIC_PREFIX "water-breaker" CACHE STRING "Default prefix for topics")
 
 
@@ -157,6 +157,8 @@ endif()
 # Tests
 ######################################################################
 
+# Off by default, so a standard build does not compile them. Enable for the
+# test process with -DWITH_TESTS=ON; they then build with `all` and run via ctest.
 if (WITH_TESTS)
     enable_testing()
 

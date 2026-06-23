@@ -538,11 +538,24 @@ make  -C build
 | `WITH_LOG`          | Enable log messages on stderr                               |
 | `WITH_PUT`          | Also write each reading to stdout, one line in an InfluxDB-ish line-protocol format (`<measurement> <fields> <nanosecond-timestamp>`), handy for piping into a time-series database |
 | `WITH_GUI`          | Build the experimental LVGL interface (`main`). Off by default; needs a C++ compiler. The three daemons build with just a C compiler. |
+| `WITH_TESTS`        | Build the unit tests (off by default, so a normal build skips them); see [Tests](#tests). |
 | `MQTT_TOPIC_PREFIX` | Change the default prefix applied to topic (`water-breaker`)|
 
 The three resulting executables (`moses_watermeter`, `moses_breaker`,
 `moses_sensors`) are produced under `bin/`. Their command-line options
 and MQTT topics are documented in the [Software](#software) section.
+
+Tests
+-----
+
+The unit tests are off by default. Enable them at configure time, build,
+and run them with `ctest`:
+
+~~~sh
+cmake -B build -DWITH_TESTS=ON
+make    -C build
+ctest --test-dir build --output-on-failure
+~~~
 
 Install
 -------

@@ -56,7 +56,7 @@ jobs:
         sudo make install
 
     - name: Configure
-      run: cmake -B build -DWITH_LOG=1 -DWITH_PUT=1 -DWITH_WERROR=1
+      run: cmake -B build -DWITH_LOG=1 -DWITH_PUT=1 -DWITH_WERROR=1 -DWITH_TESTS=ON
 
     - name: Build
       run: cmake --build build --parallel "$(nproc)"
