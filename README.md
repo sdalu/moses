@@ -473,7 +473,7 @@ Supervision
 -----------
 
 The daemons are meant to run forever and are not expected to exit. The
-[`loop-runner`](loop-runner) helper restarts a command when it stops and
+[`loop-runner`](scripts/loop-runner) helper restarts a command when it stops and
 publishes a `crash` message on the `error` topic:
 
 ~~~sh
@@ -571,7 +571,7 @@ scripts where you want them, for instance:
 ~~~sh
 sudo install -m 0755 bin/moses_watermeter bin/moses_breaker \
                      bin/moses_sensors    /usr/local/bin
-sudo install -m 0755 loop-runner nut-notify /usr/local/bin
+sudo install -m 0755 scripts/loop-runner scripts/nut-notify /usr/local/bin
 ~~~
 
 The daemons are meant to run continuously; supervise each one with
