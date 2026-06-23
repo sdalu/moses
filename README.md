@@ -363,14 +363,17 @@ under a common topic prefix (`MQTT_TOPIC_PREFIX`, default
    M-Bus ---------> |                      | --> <prefix>/index
    pulse (GPIO) --> |  moses_watermeter    | --> <prefix>/pulse
                     +----------------------+ --> <prefix>/error
+                                             --> <prefix>/availability
 
    <prefix>/state/set --> +----------------+
                           | moses_breaker  | --> relay --> solenoid valve
    <prefix>/state     <-- +----------------+ --> <prefix>/error
+                                             --> <prefix>/availability
 
                     +----------------------+
    BME280 (I2C) --> |  moses_sensors       | --> <prefix>/sensors
                     +----------------------+ --> <prefix>/error
+                                             --> <prefix>/availability
 ~~~
 
 The valve is *normally open*: `moses_breaker` only energises the relay
@@ -392,6 +395,12 @@ All topics are relative to `MQTT_TOPIC_PREFIX`.
 | `state/set`   | subscribe | `moses_breaker`     | Requested state: `0`/`1`, `off`/`on`, `false`/`true` |
 | `sensors`     | publish   | `moses_sensors`     | JSON `{ "temperature", "pressure", "humidity" }`     |
 | `error`       | publish   | all                 | JSON `{ "source", "type", "msg" }`                   |
+| `availability`| publish   | all                 | `online` while connected; retained `offline` last-will on disconnect |
+
+The `availability` topic is a retained MQTT *last will*: each daemon
+publishes `online` once connected, and registers `offline` with the
+broker so it is published automatically if the daemon dies or the link
+drops. This lets Home Assistant (and friends) flag an offline daemon.
 
 
 Common options
