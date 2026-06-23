@@ -111,7 +111,7 @@ struct breaker breaker =  {
 	.topic.setter   = "state/set",
 	.topic.publish  = "state",
 	.topic.error    = "error",
-	.topic.avail    = "availability",
+	.topic.avail    = "availability/breaker",
     },
     .control = {
 	.ctrl.id              = NULL,

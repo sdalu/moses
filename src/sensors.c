@@ -135,7 +135,7 @@ struct sensors sensors = {
 	.handler         = MQTT_INITIALIZER(),
 	.topic.sensors   = "sensors",
 	.topic.error     = "error",
-	.topic.avail     = "availability",
+	.topic.avail     = "availability/sensors",
     },
     .bme280   = {
 	.dev = {

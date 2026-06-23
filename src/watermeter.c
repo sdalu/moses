@@ -110,7 +110,7 @@ struct watermeter watermeter =  {
 	.topic.pulse = "pulse",
 	.topic.index = "index",
 	.topic.error = "error",
-	.topic.avail = "availability",
+	.topic.avail = "availability/watermeter",
     },
     .pulse_counting = {
 	.ctrl.id   = NULL,
