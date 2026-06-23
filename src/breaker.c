@@ -34,25 +34,15 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <limits.h>
 #include <assert.h>
 
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <sys/ioctl.h>
-#include <sys/mman.h>
-#include <fcntl.h>
-#include <poll.h>
 #include <pthread.h>
-#include <sched.h>
 
 #include <string.h>
-#include <strings.h>
-#include <ctype.h>
 #include <errno.h>
 #include <linux/gpio.h>
 #include <time.h>
-#include <sys/time.h>
 
 #include <getopt.h>
 #include <libgen.h>

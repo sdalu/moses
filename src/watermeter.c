@@ -29,17 +29,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <limits.h>
-#include <assert.h>
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/ioctl.h>
-#include <fcntl.h>
 #include <poll.h>
 #include <pthread.h>
-#include <sched.h>
-#include <sys/mman.h>
 
 #include <string.h>
 #include <errno.h>
