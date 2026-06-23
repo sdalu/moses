@@ -58,7 +58,7 @@ you won't be locked into proprietary systems.
 4. [PiJuice for PiZero](https://www.kubii.com/fr/poe-hat-cartes-d-extensions/2795-pijuice-pour-pi-zero-0616909468508.html) + [Battery 600mA](https://www.kubii.com/fr/batteries-piles/2818-1510-batterie-pijuice-3272496311428.html) (optional)
 5. [spacer](https://www.amazon.fr/dp/B093FNWP39)
 6. [Bürkert (type 6281): Solenoid valve for drinking water, brass, G3/4", NO, 24VDC](https://tameson.fr/products/electrovanne-d-eau-potable-g3-4-en-laiton-no-24vdc-6281-256576-256576) + [Connector](https://tameson.fr/products/connecteur-avec-led-din-a-as-cal-tameson-as-cal) 
-7. [Sensus 620 watermeter](https://www.compteur-energie.com/compteurs-eau-froide-sensus-compteur-eau-620.htm) + [HRI B4/D1/8L](https://www.compteur-energie.com/eau-emetteur-impulsions-sensus-hri-b4-amrab152-amrab162.htm)
+7. [Sensus 620 watermeter](https://www.compteur-energie.com/compteurs-eau-froide-sensus-compteur-eau-620.htm) + [HRI B4/D1/8L](https://www.compteur-energie.com/eau-emetteur-impulsions-sensus-hri-b4-amrab152-amrab162.htm) (M-Bus: 2400 baud max)
 8. [24VDC power supply (MeanWell LPV-35-24)](https://www.amazon.fr/gp/product/B00ID6L04S) + [5VDC stepdown buck regulator (Bauer Electronics, DC DC 8V-32V to 5V)](https://www.amazon.fr/gp/product/B09B7XZYJQ)
 9. [Pimoroni BME280 Breakout](https://shop.pimoroni.com/products/bme280-breakout?variant=29420960677971) (optional)
 
@@ -436,6 +436,13 @@ the matching `gpiochip0` line, so `rpi:36` is the same as `gpiochip0:16`.
 The M-Bus reader and the pulse counter are independent: provide `-d`
 (and/or rely on its default) to enable index reading, and `-P` to enable
 pulse counting. Either can be left out.
+
+To find the meter on the bus (and the address to pass to `-a`), scan it with
+the `mbus-serial-scan` tool shipped with libmbus:
+
+~~~sh
+mbus-serial-scan -b 2400 /dev/ttyAMA0
+~~~
 
 
 ### `moses_breaker`
