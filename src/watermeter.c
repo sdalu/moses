@@ -321,15 +321,17 @@ watermeter_init(struct watermeter *w)
     //
     if ((pc->ctrl.id != NULL) || (pc->pin.id != ~0U)) {
 	// Single input line, with optional hardware debounce.
+	//  (attrs slots beyond num_attrs must stay zeroed:
+	//   recent kernels reject requests with data in unused slots)
 	struct gpio_v2_line_request req = {
 	    .config.flags     = GPIO_V2_LINE_FLAG_INPUT | pc->pin.flags,
-	    .config.num_attrs = pc->flags.debounce ? 1 : 0,
-	    .config.attrs     = {
-		{ .mask                    = 1 << 0,
-		  .attr.id                 = GPIO_V2_LINE_ATTR_ID_DEBOUNCE,
-		  .attr.debounce_period_us = pc->debounce                  }
-	    }
 	};
+	if (pc->flags.debounce) {
+	    req.config.num_attrs                        = 1;
+	    req.config.attrs[0].mask                    = 1 << 0;
+	    req.config.attrs[0].attr.id                 = GPIO_V2_LINE_ATTR_ID_DEBOUNCE;
+	    req.config.attrs[0].attr.debounce_period_us = pc->debounce;
+	}
 
 	int ctrl_fd = gpio_open_line(pc->ctrl.id, pc->pin.id,
 				     pc->pin.label, &req);
