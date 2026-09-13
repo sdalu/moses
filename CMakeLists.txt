@@ -91,12 +91,17 @@ message(STATUS "bitters ${BITTERS_VERSION}")
 add_library(bitters INTERFACE)
 target_include_directories(bitters INTERFACE ${BITTERS_INCLUDE_DIR})
 target_compile_definitions(bitters INTERFACE BITTERS_SILENCE_WARNING)
-# delay.c is deliberately left out: moses does not use the delay API.
-target_sources(bitters INTERFACE
-    ${BITTERS_SOURCES_CORE}
-    ${BITTERS_SOURCES_GPIO}
-    ${BITTERS_SOURCES_SPI}
-    ${BITTERS_SOURCES_I2C})
+# The subsystems we take. delay.c is deliberately left out: moses does not
+# use the delay API, and nothing reaches into it. One list, so the sources
+# and the BITTERS_WITH_* definitions cannot drift apart -- taking a source
+# without naming it is a compile error in the caller, naming one without
+# the source is a missing symbol at link.
+set(BITTERS_TAKEN GPIO SPI I2C)
+target_sources(bitters INTERFACE ${BITTERS_SOURCES_CORE})
+foreach(sub IN LISTS BITTERS_TAKEN)
+    target_sources(bitters            INTERFACE ${BITTERS_SOURCES_${sub}})
+    target_compile_definitions(bitters INTERFACE BITTERS_WITH_${sub})
+endforeach()
 
 
 #
