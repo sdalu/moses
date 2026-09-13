@@ -91,12 +91,15 @@ message(STATUS "bitters ${BITTERS_VERSION}")
 add_library(bitters INTERFACE)
 target_include_directories(bitters INTERFACE ${BITTERS_INCLUDE_DIR})
 target_compile_definitions(bitters INTERFACE BITTERS_SILENCE_WARNING)
-# The subsystems we take. delay.c is deliberately left out: moses does not
-# use the delay API, and nothing reaches into it. One list, so the sources
-# and the BITTERS_WITH_* definitions cannot drift apart -- taking a source
-# without naming it is a compile error in the caller, naming one without
-# the source is a missing symbol at link.
-set(BITTERS_TAKEN GPIO SPI I2C)
+# The subsystems every consumer of this target takes. Only I2C: the
+# daemons reach nothing else, and a stray GPIO or SPI call in one of them
+# is now a compile error in the file that made it rather than a symbol
+# that happens to be there. The GUI adds GPIO and SPI for itself, below.
+# delay.c is left out entirely: nothing reaches into it.
+# One list, so the sources and the BITTERS_WITH_* definitions cannot drift
+# apart -- a source without its flag is a compile error in the caller, a
+# flag without its source is a missing symbol at link.
+set(BITTERS_TAKEN I2C)
 target_sources(bitters INTERFACE ${BITTERS_SOURCES_CORE})
 foreach(sub IN LISTS BITTERS_TAKEN)
     target_sources(bitters            INTERFACE ${BITTERS_SOURCES_${sub}})
@@ -200,6 +203,14 @@ if (WITH_GUI)
         ${PROJECT_SOURCE_DIR}/analog-inputs-blank.c)
     target_compile_options(main PRIVATE -O3)
     target_compile_definitions(main PRIVATE BITTERS_WITH_THREADS)
+    # The GUI drives an SPI display and GPIO lines through
+    # src/integration/rpi-automation-hat-mini.c, so it takes two subsystems
+    # the daemons do not. Same one-list rule as above.
+    set(BITTERS_TAKEN_GUI GPIO SPI)
+    foreach(sub IN LISTS BITTERS_TAKEN_GUI)
+        target_sources(main             PRIVATE ${BITTERS_SOURCES_${sub}})
+        target_compile_definitions(main PRIVATE BITTERS_WITH_${sub})
+    endforeach()
     target_link_libraries(main PRIVATE
         bme280 bitters lvgl::lvgl lvgl::thorvg Threads::Threads m)
 
