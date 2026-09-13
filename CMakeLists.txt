@@ -86,14 +86,17 @@ target_compile_definitions(bme280 PUBLIC
 # bitters (low-level gpio/spi/i2c). Exposed as an INTERFACE library so its
 # sources are compiled with each consumer's own flags -- in particular only
 # the GUI needs BITTERS_WITH_THREADS.
+include(${3RD}/bitters/bitters.cmake)
+message(STATUS "bitters ${BITTERS_VERSION}")
 add_library(bitters INTERFACE)
-target_include_directories(bitters INTERFACE ${3RD}/bitters/include)
+target_include_directories(bitters INTERFACE ${BITTERS_INCLUDE_DIR})
 target_compile_definitions(bitters INTERFACE BITTERS_SILENCE_WARNING)
+# delay.c is deliberately left out: moses does not use the delay API.
 target_sources(bitters INTERFACE
-    ${3RD}/bitters/src/bitters.c
-    ${3RD}/bitters/src/spi.c
-    ${3RD}/bitters/src/i2c.c
-    ${3RD}/bitters/src/gpio.c)
+    ${BITTERS_SOURCES_CORE}
+    ${BITTERS_SOURCES_GPIO}
+    ${BITTERS_SOURCES_SPI}
+    ${BITTERS_SOURCES_I2C})
 
 
 #
