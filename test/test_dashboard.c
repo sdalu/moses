@@ -20,10 +20,13 @@
  * What it cannot prove: that those pixels reach the glass correctly.
  * The byte order the controller reads them in, the (1,26) offset into
  * the ST7735's RAM and the 270-degree rotation all live in the
- * backend's flush path, past the point this sees. Only the panel proves
- * those -- and the byte order in particular is worth looking at, since
- * inky-pi's screen on this panel is black and white, and black and
- * white survive an exchange of red and blue unnoticed.
+ * backend's flush path, past the point this sees.
+ *
+ * That gap is not hypothetical. These images were correct while the
+ * panel was showing the water drop gold instead of cyan -- red and blue
+ * exchanged by MADCTL's BGR bit, which src/display/backend/ now leaves
+ * clear. A screenshot that matches proves the screen was drawn right,
+ * and says nothing about how it was sent.
  *
  * Every input is fixed: the clock and the device name are arguments to
  * the dashboard rather than things it reads, and TZ is pinned below. So the

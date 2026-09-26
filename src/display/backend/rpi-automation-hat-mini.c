@@ -140,18 +140,23 @@ lcd_send_cmd(lv_display_t *disp,
  * Pixels, in the order the controller expects them.
  *
  * The panel is put in 18-bit mode (LV_LCD_FLAG_RGB666 below) and LVGL
- * renders LV_COLOR_FORMAT_RGB888, which is three bytes per pixel laid
- * out blue, green, red -- see lv_color_t in LVGL's lv_color.h. The
- * ST7735 reads those three bytes as red, green, blue when MADCTL's BGR
- * bit is clear and as blue, green, red when it is set, and
- * LV_LCD_FLAG_BGR sets it. So the bytes already line up and nothing is
- * swapped here, unlike the RGB565 path this replaces, which had to be
+ * renders LV_COLOR_FORMAT_RGB888, three bytes per pixel laid out blue,
+ * green, red -- see lv_color_t in LVGL's lv_color.h. Nothing is swapped
+ * here, unlike the RGB565 path this replaces, which had to be
  * byte-swapped on every frame.
  *
- * If red and blue ever come out exchanged on the glass, LV_LCD_FLAG_BGR
- * is the single bit to reconsider: it was carried over from inky-pi,
- * whose screen on this panel is black and white, and black and white
- * survive an exchange of red and blue without anyone noticing.
+ * LV_LCD_FLAG_BGR is deliberately NOT set, and that is worth recording
+ * because it looks wrong. MADCTL's BGR bit decides which way round the
+ * controller reads a pixel's three bytes, and reasoning from LVGL's
+ * memory order says to set it. On this panel that produces red and blue
+ * exchanged: the cyan water drop of the dashboard came out gold, which
+ * is exactly 0x3FC7F4 read backwards. Clear is correct here, measured
+ * rather than derived.
+ *
+ * It went unnoticed for as long as it did because inky-pi, which this
+ * backend comes from, draws black and white on this panel -- and black
+ * and white survive an exchange of red and blue with nothing to show
+ * for it. This tree is the first to send it a colour.
  */
 static void
 lcd_send_color(lv_display_t *disp,
@@ -204,8 +209,7 @@ backend_init(void)
     backend_lvgl_boot();
 
     lv_display_t *disp =
-	lv_st7735_create(LCD_H_RES, LCD_V_RES,
-			 LV_LCD_FLAG_BGR | LV_LCD_FLAG_RGB666,
+	lv_st7735_create(LCD_H_RES, LCD_V_RES, LV_LCD_FLAG_RGB666,
 			 lcd_send_cmd, lcd_send_color);
     if (disp == NULL) {
 	LV_LOG_ERROR("failed to create display");
