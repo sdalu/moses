@@ -8,14 +8,18 @@ driven over [MQTT](https://mqtt.org/), so it integrates with existing
 home-automation setups (Home Assistant, Node-RED, …) without locking you
 into a proprietary cloud.
 
-It is made of three small C programs, each doing one job and talking to
-the MQTT broker:
+It is made of small C programs, each doing one job and talking to the
+MQTT broker:
 
 | Program            | Role                                                            |
 |--------------------|-----------------------------------------------------------------|
 | `moses_watermeter` | Read the water meter (M-Bus index and/or GPIO pulse counting)   |
 | `moses_breaker`    | Open/close the solenoid valve through a relay                   |
 | `moses_sensors`    | Read the optional BME280 (temperature, pressure, humidity)      |
+| `moses_display`    | Show the installation on the HAT's LCD (optional, see [Display](#moses_display)) |
+
+The first three are the installation; `moses_display` only watches them
+and is not built by default.
 
 See [Software](#software) for the architecture and the MQTT interface,
 and [Build and installation](#build-and-installation) to compile and run
@@ -413,7 +417,7 @@ apt install mosquitto-dev
 Software
 ========
 
-Moses is split into three independent daemons that share a small support
+Moses is split into independent daemons that share a small support
 library (`src/common.c`). Each one is configured from the command line,
 reads its MQTT credentials from the environment, and publishes/subscribes
 under a common topic prefix (`MQTT_TOPIC_PREFIX`, default
@@ -435,7 +439,19 @@ under a common topic prefix (`MQTT_TOPIC_PREFIX`, default
    BME280 (I2C) --> |  moses_sensors       | --> <prefix>/sensors
                     +----------------------+ --> <prefix>/error
                                              --> <prefix>/availability/sensors
+
+   <prefix>/index      --> +----------------+
+   <prefix>/pulse      --> |                |
+   <prefix>/state      --> | moses_display  | --> LCD
+   <prefix>/sensors    --> |                |
+   <prefix>/availability/* +----------------+
+                           ^        ^
+   ups/+/notify/* ---------+        +----- upsd on localhost:3493
+                                           (only with --ups)
 ~~~
+
+Everything flows one way except the breaker: `moses_display` publishes
+nothing and commands nothing.
 
 The valve is *normally open*: `moses_breaker` only energises the relay
 to close the water, so a power loss or a crash leaves the supply open.
@@ -457,6 +473,11 @@ All topics are relative to `MQTT_TOPIC_PREFIX`.
 | `sensors`     | publish   | `moses_sensors`     | JSON `{ "temperature", "pressure", "humidity" }`     |
 | `error`       | publish   | all                 | JSON `{ "source", "type", "msg" }`                   |
 | `availability/<daemon>` | publish | each daemon | `online` while connected; retained `offline` last-will on disconnect |
+
+`moses_display` subscribes to `index`, `pulse`, `state`, `sensors` and
+every `availability/<daemon>`, and publishes nothing at all — not even
+an availability of its own, since a display being up says nothing about
+the water.
 
 `error` is shared by all daemons; its `source` field says which one
 reported the problem. `availability` is instead **per-daemon**
@@ -528,6 +549,125 @@ mbus-serial-scan -b 2400 /dev/ttyAMA0
 |-------------------------|------------------------------------------------------|
 | `-i`, `--interval=SEC`  | Publishing interval (default 60s)                    |
 | `-a`, `--altitude=M`    | Convert the reading to sea-level pressure for altitude M (meters) |
+
+
+### `moses_display`
+
+A read-only front panel on the 0.96" 160x80 LCD the Automation HAT Mini
+carries (see [LCD](#lcd)). It subscribes to what the other daemons
+publish, asks `upsd` about the battery, and draws:
+
+~~~
++--------------------------------------+
+| moses            21.4°        13:40  |
+|--------------------------------------|
+| (o)  213025 L                  [+3]  |
+|                                      |
+| +-----------------+ +--------------+ |
+| | VALVE           | | UPS OB       | |
+| | OPEN            | | 42% ~30m     | |
+| +-----------------+ +--------------+ |
++--------------------------------------+
+~~~
+
+That is not a sketch: it is what `test/ref-imgs/dashboard-flow.png`
+contains, rendered by the screenshot tests below.
+
+The name in the top left is the **last segment of `MQTT_TOPIC_PREFIX`**
+— `moses`, out of `water-breaker/moses`. That prefix is already how a
+broker carrying several installations tells them apart, so the panel
+reads the name from it rather than having it configured a second time
+and kept in step by hand.
+
+It is deliberately *not* the hostname. Over MQTT the machine running
+the display is whichever one someone opened a window on, which is not
+what the screen is about — the first SDL build sat on a workstation
+reporting `hyperion` above moses's water meter. The hostname becomes
+the right answer again only for a source that is local by construction,
+which is what the [local socket](TODO.md) would be.
+
+It is dark on purpose: the panel sits in a technical room where a white
+screen at full backlight is a lamp, black is the one thing an LCD
+renders perfectly, and it leaves colour free to mean something.
+
+Colour carries the state, and the rule is three-valued:
+
+| colour        | meaning                                                 |
+|---------------|---------------------------------------------------------|
+| its own       | a current reading — the meter cyan, an open valve green, the rest plain |
+| dim grey      | nothing known, or nothing heard for `--stale` seconds — the figure shown may no longer be true |
+| red           | known and bad: the valve shut, the room at freezing, the UPS on battery |
+
+Keeping dim and red apart is the point. Not knowing whether the valve
+is open is a different thing from knowing it is shut, and a panel that
+painted both red would cry wolf every time the broker hiccuped. A figure
+goes grey either because its daemon's retained `availability` says
+`offline` or because nothing has arrived in `--stale` seconds — the
+second catches a daemon wedged with its MQTT connection still open.
+
+The flow marker is latched: a `pulse` report that counted anything shows
+`+N` for 30 seconds, so a pulse is still visible to someone who glances
+at the panel a moment later.
+
+`ups.status` is condensed before it is shown: `OL`, `HB`, `CHRG` and
+`DISCHRG` are dropped — the first is the routine state and a white
+reading already says the power is fine, the second is the battery
+merely being full, and the last two repeat what `OL` and `OB` have
+said. Everything else passes through, so `RB`, `ALARM` and any flag NUT
+adds later still reach the panel.
+
+What survives goes on the chip's **label** line (`UPS OB LB RB`) while
+the figures go on its **value** line (`100% ~1h25`), so a long status
+and a long runtime never compete for the same line — on one line, the
+runtime was the half that fell off the end, which is the half you want
+when the power has gone.
+
+| Option                  | Description                                          |
+|-------------------------|------------------------------------------------------|
+| `-i`, `--interval=SEC`  | Poll `upsd` every SEC (default 10s)                  |
+| `-s`, `--stale=SEC`     | Grey out a reading older than SEC (default 150s, i.e. two and a half missed one-minute reports) |
+| `-u`, `--ups[=NAME]`    | Poll `upsd` **on this machine**, which is the only way to a charge and a remaining time. With no NAME, the first UPS `upsd` lists. Omit `-u` entirely and the UPS state comes from MQTT instead (see below). |
+
+It takes only the panel's three pins. The relay on that same HAT is the
+solenoid valve and belongs to `moses_breaker`; this program never goes
+near it. There is deliberately no `--reduced-latency`: a screen refresh
+has no deadline to miss, and putting one on `SCHED_FIFO` on a
+single-core Pi would be competing with the program that shuts the water
+off.
+
+**The UPS has two ways in, and `--ups` picks between them.**
+
+*Without `--ups`* — `upsd` is not touched at all, and the UPS state comes
+from the MQTT events [`nut-notify`](#upsmon) publishes on
+`ups/+/notify/<TYPE>`. Those name a transition rather than a state, so
+they are translated back to NUT's own status flags (`ONBATT` → `OB`,
+`LOWBATT` → `OB LB`, `NOCOMM` → lost) and the panel says what the UPS is
+doing — `on line`, `on batt` — with no charge and no remaining time,
+because the events carry none. This is the right way round for a display
+that is **not** on the machine the UPS is attached to: `localhost:3493`
+has no `upsd` to ask there, and the broker is the only thing that knows
+the power went.
+
+Until the first event arrives the UPS reads `--`, not `none`. upsmon
+sends one when something changes and nothing in between, so a display
+that has just started legitimately knows nothing yet — and saying "there
+is no UPS" would be a claim rather than the absence of one.
+
+*With `--ups`* — `upsd` on `localhost:3493` is polled in NUT's own line
+protocol every `--interval` seconds, which is the only way to a charge
+and a remaining time. `--ups=NAME` picks a UPS; a bare `--ups` takes the
+first one `upsd` lists. The events are still subscribed to — for the UPS
+that was named or found, so a second one on the broker cannot write over
+it — so going onto battery repaints at once rather than up to one poll
+later.
+
+Remaining time is shown only while actually running on the battery, and
+comes from `battery.runtime` when the driver reports it. The `pijuice`
+driver does not, so it is worked out from `battery.charge`,
+`battery.capacity` and `battery.current` and marked with a leading `~`.
+That is a division, not a measurement: on a 0.6 Ah pack the
+instantaneous current moves with whatever the Pi is doing, so read it as
+an order of magnitude.
 
 
 Supervision
@@ -603,13 +743,16 @@ make  -C build
 |---------------------|-------------------------------------------------------------|
 | `WITH_LOG`          | Enable log messages on stderr                               |
 | `WITH_PUT`          | Also write each reading to stdout, one line in an InfluxDB-ish line-protocol format (`<measurement> <fields> <nanosecond-timestamp>`), handy for piping into a time-series database |
-| `WITH_GUI`          | Build the experimental LVGL interface (`main`). Off by default; needs a C++ compiler. The three daemons build with just a C compiler. |
+| `WITH_DISPLAY`      | Build [`moses_display`](#moses_display), the LVGL front panel. Off by default; needs a C++ compiler (LVGL's build enables the language even though nothing here uses it) and pulls in the `3rd/lvgl` submodule, which is a long compile on a Pi Zero. The three daemons build with just a C compiler. |
+| `WITH_DISPLAY_TESTS`| Build the [screenshot tests](#tests). Needs LVGL but no panel, so it stands alone on a machine that cannot build `moses_display` at all. |
+| `WITH_DAEMONS`      | Build the three daemons (**on** by default). Turn it off to build only what needs neither mosquitto nor M-Bus — those libraries are then not looked for either, which is what lets the tests configure on a machine that has neither. |
 | `WITH_TESTS`        | Build the unit tests (off by default, so a normal build skips them); see [Tests](#tests). |
 | `MQTT_TOPIC_PREFIX` | Change the default prefix applied to topic (`water-breaker`)|
 
 The three resulting executables (`moses_watermeter`, `moses_breaker`,
-`moses_sensors`) are produced under `bin/`. Their command-line options
-and MQTT topics are documented in the [Software](#software) section.
+`moses_sensors`) are produced under `bin/`, joined by `moses_display`
+when `WITH_DISPLAY` is on. Their command-line options and MQTT topics
+are documented in the [Software](#software) section.
 
 Tests
 -----
@@ -622,6 +765,56 @@ cmake -B build -DWITH_TESTS=ON
 make    -C build
 ctest --test-dir build --output-on-failure
 ~~~
+
+| Test            | Covers                                                  |
+|-----------------|---------------------------------------------------------|
+| `parsers`       | the option and payload parsers in `src/common.c`        |
+| `breaker_state` | `breaker_parse_state()`, the valve command vocabulary — also what `moses_display` reads the `state` topic with, so the two cannot disagree |
+| `ups_estimate`  | `ups_on_battery()` and `ups_runtime()`: which `ups.status` flags mean on-battery, and the remaining-time division, including every way its inputs can fail to add up |
+| `payload`       | `src/display/payload.c`: what `moses_display` makes of a published payload — the index, the pulse count, the sensors JSON and an availability |
+| `dashboard`     | the screen itself, rendered to PNG — see below           |
+
+All but `parsers` need neither mosquitto nor M-Bus nor anything
+Linux-only, so they run on a development machine too:
+
+~~~sh
+cmake -B build-nohw -DWITH_TESTS=ON -DWITH_DISPLAY_TESTS=ON -DWITH_DAEMONS=OFF
+make  -C build-nohw
+ctest --test-dir build-nohw --output-on-failure
+~~~
+
+
+### Screenshot tests
+
+`ctest -R dashboard` renders the display's screen with LVGL's own
+headless test display and compares it against the reference images in
+`test/ref-imgs/`:
+
+~~~sh
+cmake -B build-display -DWITH_DISPLAY_TESTS=ON -DWITH_DAEMONS=OFF
+make  -C build-display
+ctest --test-dir build-display --output-on-failure
+~~~
+
+It needs LVGL but no panel, no GPIO, no SPI and no broker — nothing
+Linux-only — so it runs on a development machine as well as on the Pi,
+which the rest of `moses_display` does not. `WITH_DAEMONS=OFF` is what
+lets it configure where mosquitto and libmbus are not installed.
+
+A reference image that does not exist yet is **written** rather than
+failed, so adding a case means running the test once and looking at what
+came out. One that does not match leaves `<name>_err.png` beside it, so
+a regression can be looked at rather than guessed at. Every input is
+fixed — the clock and the device name are arguments to the dashboard rather
+than things it reads, and `TZ` is pinned — so the same bytes come out on
+every machine.
+
+What it proves: the layout, the fonts, the three inks, and the whole
+path from model to pixels, at the exact 160x80 RGB565 the panel gets.
+What it cannot: that those pixels reach the glass. The RGB565 byte swap,
+the (1,26) offset into the ST7735's RAM and the 270° rotation all live
+in the backend's flush path, past the point this sees. Only the panel
+proves those.
 
 Install
 -------
