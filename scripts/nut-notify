@@ -2,7 +2,10 @@
 #
 # nut-notify -- NUT NOTIFYCMD: forward a UPS event to MQTT.
 # NUT invokes it as `nut-notify "<message>"` with $NOTIFYTYPE / $UPSNAME set
-# in the environment, and publishes the message on ups/<ups>/notify/<type>.
+# in the environment, and publishes twice:
+#   ups/<ups>/notify/<type>   the message, not retained -- an event
+#   ups/<ups>/state           the type, retained -- the current state
+# See the comments at the foot of this file for why those are separate.
 #
 set -u
 
@@ -30,10 +33,31 @@ done
 
 : "${UPSNAME:=unknown}" "${NOTIFYTYPE:=unknown}"
 
-exec "$MOSQUITTO_PUB"                          \
-    -h "$MQTT_HOST"                            \
-    ${MQTT_PORT:+-p "$MQTT_PORT"}              \
-    ${MQTT_USERNAME:+-u "$MQTT_USERNAME"}      \
-    ${MQTT_PASSWORD:+-P "$MQTT_PASSWORD"}      \
-    -t "ups/${UPSNAME}/notify/${NOTIFYTYPE}"   \
-    -m "${1:-}"
+# Publish once, on the common arguments. A non-empty third argument
+# asks for the message to be retained.
+publish() { # <topic> <payload> [retain]
+    "$MOSQUITTO_PUB"                           \
+        -h "$MQTT_HOST"                        \
+        ${MQTT_PORT:+-p "$MQTT_PORT"}          \
+        ${MQTT_USERNAME:+-u "$MQTT_USERNAME"}  \
+        ${MQTT_PASSWORD:+-P "$MQTT_PASSWORD"}  \
+        ${3:+-r}                               \
+        -t "$1" -m "$2"
+}
+
+# The event: one topic per notification type, carrying upsmon's own
+# message. Not retained -- an event is a thing that happened, and a
+# subscriber arriving later has not had it happen to them.
+publish "ups/${UPSNAME}/notify/${NOTIFYTYPE}" "${1:-}"
+
+# The state: one topic, retained, carrying the type alone. This is what
+# lets something that was not running at the time find out where the UPS
+# stands -- a display started an hour later, or on another machine
+# entirely, gets it the moment it subscribes.
+#
+# It has to be its own topic rather than a retain flag on the event
+# above: the type is part of that topic, so retaining there would leave
+# a retained message per type -- ONLINE *and* ONBATT both delivered on
+# subscribe, in no defined order and with no timestamps, and no way to
+# tell which is the current one.
+publish "ups/${UPSNAME}/state" "${NOTIFYTYPE}" retain
