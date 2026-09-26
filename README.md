@@ -208,6 +208,11 @@ Measured on 2026-09-26, with `moses_watermeter` running as deployed
 | 12 litres drawn, index `213011` -> `213023` | `0` pulses counted                |
 | `GPIO 20` level, throughout                 | `1`                               |
 
+That single edge is most likely an artifact rather than a pulse: the
+pull changes in the measurement under (2) below glitched the edge
+detector the same way, twice in a row. The true count over those 13
+days is almost certainly zero.
+
 The M-Bus index followed the flow litre by litre while the pulse
 counter stayed at zero, so the meter, the HRI and the software are all
 sound -- the signal never arrives at the pin. There are two
@@ -227,8 +232,8 @@ independent causes, both electrical:
    `-B pull-up`) enable the SoC's internal pull-up, roughly 50k, on a
    pin the HAT already drives through its divider. Against the
    divider's 120k leg to ground that holds `GPIO 20` high whatever the
-   HAT does. (Inferred from the published divider values, not
-   measured.)
+   HAT does. Measured: with `raspi-gpio set 20 pn` the level drops to
+   0 and stays there, and returns to 1 when the pull-up is restored.
 
 To make it work:
 
