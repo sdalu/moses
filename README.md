@@ -389,7 +389,7 @@ All topics are relative to `MQTT_TOPIC_PREFIX`.
 
 | Topic         | Direction | Producer / Consumer | Payload                                              |
 |---------------|-----------|---------------------|------------------------------------------------------|
-| `index`       | publish   | `moses_watermeter`  | Meter index in m³, e.g. `123.456`                    |
+| `index`       | publish   | `moses_watermeter`  | Meter index in litres, e.g. `213011.000`             |
 | `pulse`       | publish   | `moses_watermeter`  | Number of pulses counted (`0` heartbeat on timeout)  |
 | `state`       | publish   | `moses_breaker`     | Current valve state, `0` (open) or `1` (closed)      |
 | `state/set`   | subscribe | `moses_breaker`     | Requested state: `0`/`1`, `off`/`on`, `false`/`true` |

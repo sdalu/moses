@@ -4,7 +4,7 @@
  * Two independent and optional data sources run as separate threads:
  *
  *   - index_reader     Periodically queries the absolute meter index
- *                      (total volume in m3) over M-Bus, using libmbus.
+ *                      (total volume in litres) over M-Bus, using libmbus.
  *                      Published on the `index` topic every --interval
  *                      seconds.
  *
