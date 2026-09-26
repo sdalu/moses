@@ -197,6 +197,62 @@ cable).
 gpio=20=ip,pu
 ~~~
 
+**As wired above this does not work: no pulse ever reaches `GPIO 20`.**
+Measured on 2026-09-26, with `moses_watermeter` running as deployed
+(`-P rpi:38 -B pull-up -E rising -I 1min`):
+
+| Check                                       | Result                            |
+|---------------------------------------------|-----------------------------------|
+| Line request (`gpioinfo`)                   | `input bias=pull-up edges=rising` |
+| Edge IRQs (`/proc/interrupts`), 13 days     | `1`                               |
+| 12 litres drawn, index `213011` -> `213023` | `0` pulses counted                |
+| `GPIO 20` level, throughout                 | `1`                               |
+
+The M-Bus index followed the flow litre by litre while the pulse
+counter stayed at zero, so the meter, the HRI and the software are all
+sound -- the signal never arrives at the pin. There are two
+independent causes, both electrical:
+
+1. *The HRI output cannot drive an Automation HAT input.* The HRI-B
+   pulse output is an open-drain transistor (max 24V / 20mA, 124ms
+   fixed pulse width): it only pulls to ground, and sources no
+   voltage. The *Automation hat mini* inputs are active-high voltage
+   sensors -- an 820k/120k divider scaling 0-25.85V down to 0-3.3V,
+   switching on at 3V and off at 1V. With nothing pulling the white
+   wire up, `IN2` never reaches its 3V threshold. The Sensus wiring
+   diagram for a PLC input shows a pull-up resistor to +24V on the
+   white wire; it is missing here.
+
+2. *The internal pull-up masks the input.* The `ip,pu` above (and
+   `-B pull-up`) enable the SoC's internal pull-up, roughly 50k, on a
+   pin the HAT already drives through its divider. Against the
+   divider's 120k leg to ground that holds `GPIO 20` high whatever the
+   HAT does. (Inferred from the published divider values, not
+   measured.)
+
+To make it work:
+
+* Pull the HRI white wire up to +24V through about 10k, and connect
+  brown to the system ground. The 1k of the Sensus diagram would draw
+  24mA, above the HRI's 20mA limit; 10k draws 2.4mA.
+* Drop `gpio=20=ip,pu`, and pass `-B disabled` rather than
+  `-B pull-up`, so the HAT drives the line unopposed.
+* Keep `-E rising`: idle then sits at 24V, a pulse pulls low for
+  124ms, and its release is the counted edge -- one pulse per litre
+  with the `D1` divisor.
+
+Note that Sensus documents the pulse output and the M-Bus data
+interface as *alternatives* ("parallel usage of serial output and
+pulse output is not recommended and can cause problems") and asks for
+a potential-free connection when both are used; the HAT input is not
+isolated, so an opto-coupler belongs between the white wire and `IN2`.
+
+The M-Bus index already has one-litre resolution, so pulse counting
+only buys latency. Polling the index more often (`-i`) is the
+alternative that needs no hardware change: the HRI is bus-powered (see
+*M-Bus power enabling*) and Sensus place no limit on M-Bus read
+frequency.
+
 
 System configuration
 ====================
