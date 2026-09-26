@@ -1,60 +1,44 @@
-# CLAUDE.md
+# moses — session entry
 
-Guidance for working in this repository.
+- Gate: `ctest`, once the tree configures (README, *Tests*):
 
-## Project
+      cmake -B build -DWITH_TESTS=ON
+      make  -C build
+      ctest --test-dir build --output-on-failure
 
-Moses is a DIY water-leak breaker for a Raspberry Pi. Three small C programs
-talk to an MQTT broker:
+  Run it before modifying anything here (the baseline) and after (the
+  proof).
+- **The gate does not run on a machine without libmbus.** The M-Bus
+  `find_path` in `CMakeLists.txt` is `REQUIRED` and unconditional, so
+  configure aborts with *"Could not find MBUS_INCLUDE_DIR"* before any
+  target is built — including `test_parsers` and `test_breaker_state`,
+  which never touch M-Bus. README, *Tests*, gives the three commands
+  without this precondition. Build libmbus first (README, *libmbus*;
+  `CMakeLists.txt` hints at `/opt/libmbus`), or point `MBUS_INCLUDE_DIR`
+  and `MBUS_LIBRARY` at wherever it landed.
+- **The gate needs a Linux host.** `src/common.c`, `src/breaker.c`,
+  `src/watermeter.c` and the vendored bitters (`gpio.c`, `spi.c`, `i2c.c`)
+  include `<linux/gpio.h>`, `<linux/spi/spidev.h>` and `<linux/i2c-dev.h>`,
+  so anywhere else the build stops at *"'linux/gpio.h' file not found"* in
+  `moses_common` — and `make` builds `all`, so it dies there even when the
+  target you want would compile. `test_breaker_state` is the exception: it
+  compiles `test/test_breaker_state.c` and `src/breaker_state.c` alone,
+  links no `moses_common`, and so is the one thing a non-Linux host can
+  prove:
 
-- `moses_watermeter` — read the water meter (M-Bus index and/or GPIO pulse counting)
-- `moses_breaker`    — open/close the solenoid valve via a relay
-- `moses_sensors`    — read the optional BME280 (temperature, pressure, humidity)
+      make  -C build test_breaker_state
+      ctest --test-dir build -R breaker_state --output-on-failure
 
-Shared code lives in `src/common.c` / `src/common.h` (MQTT wrapper, option
-parsers, latency tuning). Bundled deps are git submodules under `3rd/`.
-
-## Building libmbus (required for the watermeter target)
-
-`libmbus` is usually not packaged, so CMake's `find_path`/`find_library` for
-`mbus/mbus.h` will fail until it is built and installed somewhere. It is
-vendored as a submodule at `3rd/libmbus`.
-
-To build and install it to a throwaway prefix (e.g. for local testing):
-
-```sh
-cd 3rd/libmbus
-./build.sh                          # only needed once, regenerates autotools files
-./configure --prefix=/tmp/libmbus
-make -j"$(nproc)"
-make install
-```
-
-The configure artifacts may already be present in the submodule, in which case
-`./build.sh` can be skipped and `./configure --prefix=...` run directly.
-
-This produces:
-
-- `/tmp/libmbus/include/mbus/mbus.h`
-- `/tmp/libmbus/lib/libmbus.{a,so}`
-
-## Building the project
-
-Point the `MBUS_*` cache variables at the prefix used above (the default
-`HINTS` in `CMakeLists.txt` is `/opt/libmbus`):
-
-```sh
-cmake -B build -DWITH_LOG=1 -DWITH_PUT=1 \
-  -DMBUS_INCLUDE_DIR=/tmp/libmbus/include \
-  -DMBUS_LIBRARY=/tmp/libmbus/lib/libmbus.so
-cmake --build build --parallel "$(nproc)"
-```
-
-Binaries are written to `bin/`.
-
-Useful CMake options (see `CMakeLists.txt`): `WITH_LOG` (stderr logging),
-`WITH_PUT` (line-protocol on stdout), `WITH_GUI` (experimental LVGL UI, needs a
-C++ toolchain), `MQTT_TOPIC_PREFIX`.
-
-If only the breaker/sensors/common code changed, those translation units do not
-need M-Bus and can be syntax-checked directly without installing libmbus.
+  `test_parsers` does link `moses_common`, so it cannot be built off Linux
+  at all. Use that pair as a syntax check, call the rest unverified, and
+  say so; CLAUDE.local.md names the Linux host to get the real proof from.
+- README.md says what the three programs do, how to build them, and how
+  the MQTT interface is shaped; `CMakeLists.txt` is the authority on the
+  build options it names.
+- Trap: only `moses_watermeter` needs M-Bus, so a change confined to the
+  breaker, the sensors or `src/common.c` can be compiled and tested
+  without it — except that the configure step above will not let you.
+  Making that `find_path` conditional is the fix; until then the
+  dependency is global. Note that the two preconditions are independent:
+  satisfying libmbus gets you a successful `cmake` but not a successful
+  `make` off Linux.
