@@ -20,10 +20,18 @@ endif()
 
 option(WITH_LOG "Enable log messages on stderr"                            OFF)
 option(WITH_PUT "Write each reading to stdout (line protocol)"            OFF)
-option(WITH_GUI "Build the experimental LVGL interface (needs a C++ compiler)" OFF)
+option(WITH_DISPLAY "Build moses_display, the LVGL front panel (needs a C++ compiler)" OFF)
+option(WITH_DISPLAY_TESTS "Build the display screenshot tests (implies LVGL)"          OFF)
+
+# Which panel moses_display drives. They are not interchangeable at run
+# time: one talks to an ST7735 over SPI and needs Linux, the other opens
+# a window and needs SDL2, so the choice is made here.
+set(DISPLAY_BACKEND "automation-hat-mini" CACHE STRING "moses_display backend")
+set_property(CACHE DISPLAY_BACKEND PROPERTY STRINGS automation-hat-mini sdl)
 option(WITH_WERROR   "Treat warnings as errors for moses code (CI)"        OFF)
 option(WITH_ANALYZER "Run the GCC static analyzer on moses code (CI)"      OFF)
 option(WITH_TESTS    "Build the unit tests"                                OFF)
+option(WITH_DAEMONS  "Build the three daemons (needs mosquitto, and M-Bus)" ON)
 set(MQTT_TOPIC_PREFIX "water-breaker" CACHE STRING "Default prefix for topics")
 
 
@@ -60,13 +68,32 @@ set(3RD ${PROJECT_SOURCE_DIR}/3rd)
 
 find_package(Threads REQUIRED)
 
-# Mosquitto (MQTT) -- used by every program
-find_path(   MOSQUITTO_INCLUDE_DIR NAMES mosquitto.h REQUIRED)
-find_library(MOSQUITTO_LIBRARY     NAMES mosquitto   REQUIRED)
+# Looked up only when something being built actually wants them. They used
+# to be unconditional, which meant a tree with no libmbus could not be
+# configured at all -- not even to build a test that never goes near
+# M-Bus, on a machine that could not have run the daemons anyway. That is
+# now the normal case: WITH_DISPLAY_TESTS alone needs neither library.
+set(NEED_MOSQUITTO OFF)
+set(NEED_MBUS      OFF)
+if (WITH_DAEMONS)
+    set(NEED_MOSQUITTO ON)      # moses_common, and so all three daemons
+    set(NEED_MBUS      ON)      # moses_watermeter
+endif()
+if (WITH_DISPLAY)
+    set(NEED_MOSQUITTO ON)      # moses_display subscribes
+endif()
+
+# Mosquitto (MQTT) -- used by everything that speaks to the broker
+if (NEED_MOSQUITTO)
+    find_path(   MOSQUITTO_INCLUDE_DIR NAMES mosquitto.h REQUIRED)
+    find_library(MOSQUITTO_LIBRARY     NAMES mosquitto   REQUIRED)
+endif()
 
 # M-Bus -- used by moses_watermeter only (usually not packaged, see README)
-find_path(   MBUS_INCLUDE_DIR NAMES mbus/mbus.h REQUIRED HINTS /opt/libmbus/include)
-find_library(MBUS_LIBRARY     NAMES mbus        REQUIRED HINTS /opt/libmbus/lib)
+if (NEED_MBUS)
+    find_path(   MBUS_INCLUDE_DIR NAMES mbus/mbus.h REQUIRED HINTS /opt/libmbus/include)
+    find_library(MBUS_LIBRARY     NAMES mbus        REQUIRED HINTS /opt/libmbus/lib)
+endif()
 
 
 #
@@ -85,7 +112,7 @@ target_compile_definitions(bme280 PUBLIC
 
 # bitters (low-level gpio/spi/i2c). Exposed as an INTERFACE library so its
 # sources are compiled with each consumer's own flags -- in particular only
-# the GUI needs BITTERS_WITH_THREADS.
+# moses_display needs BITTERS_WITH_THREADS.
 include(${3RD}/bitters/bitters.cmake)
 message(STATUS "bitters ${BITTERS_VERSION}")
 add_library(bitters INTERFACE)
@@ -94,7 +121,8 @@ target_compile_definitions(bitters INTERFACE BITTERS_SILENCE_WARNING)
 # The subsystems every consumer of this target takes. Only I2C: the
 # daemons reach nothing else, and a stray GPIO or SPI call in one of them
 # is now a compile error in the file that made it rather than a symbol
-# that happens to be there. The GUI adds GPIO and SPI for itself, below.
+# that happens to be there. moses_display adds GPIO and SPI for its
+# panel, below.
 # delay.c is left out entirely: nothing reaches into it.
 # One list, so the sources and the BITTERS_WITH_* definitions cannot drift
 # apart -- a source without its flag is a compile error in the caller, a
@@ -111,36 +139,50 @@ endforeach()
 # Shared moses support code (MQTT wrapper, parsers, ...)
 #
 
+if (NEED_MOSQUITTO)
 add_library(moses_common STATIC src/common.c)
 target_include_directories(moses_common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src
                                                ${MOSQUITTO_INCLUDE_DIR})
 target_compile_definitions(moses_common PUBLIC PUT_CLOCK=CLOCK_REALTIME
                                                INTERVAL_CLOCK=CLOCK_REALTIME)
 target_link_libraries(moses_common PUBLIC ${MOSQUITTO_LIBRARY} Threads::Threads m)
+endif()
 
 
 ######################################################################
 # Programs
 ######################################################################
 
+if (WITH_DAEMONS)
+
+#
+# The Linux GPIO half of the shared code. Split from moses_common so that
+# common.c stays free of <linux/gpio.h> and moses_display can be built on
+# a machine that has no such header -- see src/gpio.c.
+#
+add_library(moses_gpio STATIC src/gpio.c)
+target_link_libraries(moses_gpio PUBLIC moses_common)
+
 #
 # Watermeter -- M-Bus index reading and/or GPIO pulse counting
 #
 add_executable(moses_watermeter src/watermeter.c)
 target_include_directories(moses_watermeter PRIVATE ${MBUS_INCLUDE_DIR})
-target_link_libraries(moses_watermeter PRIVATE moses_common ${MBUS_LIBRARY})
+target_link_libraries(moses_watermeter PRIVATE moses_gpio ${MBUS_LIBRARY})
 
 #
 # Breaker -- drive the solenoid valve relay
 #
 add_executable(moses_breaker src/breaker.c src/breaker_state.c)
-target_link_libraries(moses_breaker PRIVATE moses_common)
+target_link_libraries(moses_breaker PRIVATE moses_gpio)
 
 #
 # Sensors -- read the BME280 (temperature, pressure, humidity)
 #
 add_executable(moses_sensors src/sensors.c)
 target_link_libraries(moses_sensors PRIVATE moses_common bme280 bitters)
+
+endif()
 
 
 #
@@ -150,8 +192,15 @@ target_link_libraries(moses_sensors PRIVATE moses_common bme280 bitters)
 # and is not warning-clean.
 #
 set(MOSES_SOURCES
-    src/common.c src/watermeter.c src/breaker.c src/breaker_state.c src/sensors.c
-    test/test_parsers.c test/test_breaker_state.c)
+    src/common.c src/gpio.c
+    src/watermeter.c src/breaker.c src/breaker_state.c src/sensors.c
+    src/display.c src/display/backend/sdl.c
+    src/display/dashboard.c src/display/model.c
+    src/display/backend/rpi-automation-hat-mini.c
+    src/display/source-mqtt.c src/display/source-nut.c
+    src/display/payload.c src/display/ups_estimate.c
+    test/test_parsers.c test/test_breaker_state.c test/test_ups_estimate.c
+    test/test_payload.c test/test_dashboard.c)
 
 if (WITH_WERROR)
     set_property(SOURCE ${MOSES_SOURCES} APPEND PROPERTY COMPILE_OPTIONS -Werror)
@@ -173,46 +222,171 @@ endif()
 if (WITH_TESTS)
     enable_testing()
 
-    add_executable(test_parsers test/test_parsers.c)
-    target_link_libraries(test_parsers PRIVATE moses_common)
-    add_test(NAME parsers COMMAND test_parsers)
+    # Links moses_gpio, so it exists only where <linux/gpio.h> does.
+    if (TARGET moses_gpio)
+        add_executable(test_parsers test/test_parsers.c)
+        target_link_libraries(test_parsers PRIVATE moses_gpio)
+        add_test(NAME parsers COMMAND test_parsers)
+    endif()
 
     add_executable(test_breaker_state test/test_breaker_state.c src/breaker_state.c)
     target_include_directories(test_breaker_state PRIVATE src)
     add_test(NAME breaker_state COMMAND test_breaker_state)
+
+    # The UPS arithmetic behind moses_display. Deliberately independent of
+    # WITH_DISPLAY: src/display/ups_estimate.c pulls in neither LVGL nor
+    # mosquitto nor anything Linux-only, so this runs -- like
+    # test_breaker_state -- on a machine that cannot build the daemons.
+    add_executable(test_ups_estimate
+        test/test_ups_estimate.c src/display/ups_estimate.c)
+    target_include_directories(test_ups_estimate PRIVATE src/display)
+    target_link_libraries(test_ups_estimate PRIVATE m)
+    add_test(NAME ups_estimate COMMAND test_ups_estimate)
+
+    # The payload parsers, likewise free of LVGL, mosquitto and Linux.
+    add_executable(test_payload
+        test/test_payload.c src/display/payload.c)
+    target_include_directories(test_payload PRIVATE src/display)
+    target_link_libraries(test_payload PRIVATE m)
+    add_test(NAME payload COMMAND test_payload)
 endif()
 
 
 ######################################################################
-# Experimental LVGL interface (optional, pulls in a C++ toolchain)
+# Display (optional, pulls in LVGL and a C++ toolchain)
 ######################################################################
 
-if (WITH_GUI)
+# Both off by default: LVGL is a large submodule and a long compile
+# (hours on the Pi Zero), and the three daemons do not need it. The
+# panel is the Automation HAT Mini's ST7735 (README, *LCD*).
+#
+# WITH_DISPLAY_TESTS builds the screenshot tests, which need LVGL but
+# not the panel -- so it stands alone on a machine that cannot build
+# moses_display at all. It switches LVGL's own test display and PNG
+# support on through MOSES_LV_TEST, which src/lv_conf.h reads; that is
+# why it is a separate option rather than part of WITH_DISPLAY, since it
+# would otherwise put lodepng and the test scaffolding in the program
+# that drives the water breaker's panel.
+if (WITH_DISPLAY OR WITH_DISPLAY_TESTS)
+    # LVGL's build enables the language even though nothing here uses it.
     enable_language(CXX)
 
-    # LVGL
-    set(LV_CONF_BUILD_DISABLE_EXAMPLES 1)
-    set(LV_CONF_BUILD_DISABLE_DEMOS    1)
-    set(LV_CONF_PATH ${CMAKE_CURRENT_SOURCE_DIR}/src/lv_conf.h
-                     CACHE STRING "" FORCE)
-    add_subdirectory(3rd/lvgl)
+    # Named before add_subdirectory() below, because lv_conf.h switches on
+    # these and LVGL itself is compiled against that file.
+    if (WITH_DISPLAY AND DISPLAY_BACKEND STREQUAL "sdl")
+        add_compile_definitions(MOSES_LV_SDL)
 
-    add_executable(main
-        src/main.c
-        src/integration/rpi-automation-hat-mini.c
-        ${PROJECT_SOURCE_DIR}/analog-inputs-blank.c)
-    target_compile_options(main PRIVATE -O3)
-    target_compile_definitions(main PRIVATE BITTERS_WITH_THREADS)
-    # The GUI drives an SPI display and GPIO lines through
-    # src/integration/rpi-automation-hat-mini.c, so it takes two subsystems
-    # the daemons do not. Same one-list rule as above.
-    set(BITTERS_TAKEN_GUI GPIO SPI)
-    foreach(sub IN LISTS BITTERS_TAKEN_GUI)
-        target_sources(main             PRIVATE ${BITTERS_SOURCES_${sub}})
-        target_compile_definitions(main PRIVATE BITTERS_WITH_${sub})
-    endforeach()
-    target_link_libraries(main PRIVATE
-        bme280 bitters lvgl::lvgl lvgl::thorvg Threads::Threads m)
+        # LVGL's own SDL driver is compiled as part of the lvgl target,
+        # not ours, so SDL's headers have to be in scope here -- before
+        # add_subdirectory() -- rather than on moses_display. And the
+        # driver includes <SDL2/SDL.h> (LV_SDL_INCLUDE_PATH), so it wants
+        # the directory *containing* SDL2/, which is not what the
+        # imported target advertises on every platform: FreeBSD puts the
+        # headers in /usr/local/include/SDL2 and needs /usr/local/include
+        # on the path. Both are added, so either spelling resolves.
+        find_package(SDL2 REQUIRED)
+        get_target_property(_sdl2_incs SDL2::SDL2 INTERFACE_INCLUDE_DIRECTORIES)
+        foreach(_dir IN LISTS _sdl2_incs)
+            get_filename_component(_parent "${_dir}" DIRECTORY)
+            include_directories("${_dir}" "${_parent}")
+        endforeach()
+        message(STATUS "SDL2 includes: ${_sdl2_incs}")
+    endif()
+    if (WITH_DISPLAY_TESTS)
+        add_compile_definitions(MOSES_LV_TEST)
+        # Where lv_test_screenshot_compare() looks for a reference image,
+        # writes one that is missing, and drops a *_err.png beside one
+        # that does not match. It points into the source tree so all
+        # three land where they can be looked at and committed.
+        #
+        # Set globally rather than on the test target because the code
+        # that reads it is lv_test_screenshot_compare.c, which belongs to
+        # the lvgl target. The "A:" is LVGL's POSIX filesystem drive
+        # letter (LV_FS_POSIX_LETTER in src/lv_conf.h): LVGL's lodepng
+        # goes through lv_fs_* rather than stdio, so a bare path does not
+        # open.
+        add_compile_definitions(
+            REF_IMGS_PATH="A:${CMAKE_CURRENT_SOURCE_DIR}/test/ref-imgs/")
+    endif()
 
-    add_custom_target(run COMMAND main DEPENDS main)
+    # LVGL. Its configuration is src/lv_conf.h; examples, demos and ThorVG
+    # are not built, nothing here draws vectors.
+    set(LV_BUILD_CONF_PATH ${CMAKE_CURRENT_SOURCE_DIR}/src/lv_conf.h
+        CACHE PATH "LVGL configuration" FORCE)
+    set(CONFIG_LV_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(CONFIG_LV_BUILD_DEMOS    OFF CACHE BOOL "" FORCE)
+    set(CONFIG_LV_USE_THORVG     OFF CACHE BOOL "" FORCE)
+    add_subdirectory(${3RD}/lvgl)
+endif()
+
+if (WITH_DISPLAY)
+    message(STATUS "Display backend: ${DISPLAY_BACKEND}")
+
+    add_executable(moses_display
+        src/display.c
+        src/breaker_state.c		# the `state` payload vocabulary, shared
+        src/display/dashboard.c
+        src/display/model.c
+        src/display/payload.c
+        src/display/source-mqtt.c
+        src/display/source-nut.c
+        src/display/ups_estimate.c)
+    target_include_directories(moses_display PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/display
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/display/backend)
+
+    # This program is threaded -- mosquitto's network thread, the upsd
+    # poller, and LVGL's own software render unit (lv_conf.h sets
+    # LV_USE_OS to LV_OS_PTHREAD).
+    target_link_libraries(moses_display PRIVATE
+        moses_common lvgl::lvgl Threads::Threads m)
+
+    if (DISPLAY_BACKEND STREQUAL "automation-hat-mini")
+        # The real panel: an ST7735 on SPI0 CE1 with two GPIO lines.
+        target_sources(moses_display PRIVATE
+            src/display/backend/rpi-automation-hat-mini.c)
+        target_compile_definitions(moses_display PRIVATE BITTERS_WITH_THREADS)
+
+        # Two subsystems the daemons do not take. Same one-list rule as
+        # above: a source without its flag is a compile error in the
+        # caller, a flag without its source is a missing symbol at link.
+        set(BITTERS_TAKEN_DISPLAY GPIO SPI)
+        foreach(sub IN LISTS BITTERS_TAKEN_DISPLAY)
+            target_sources(moses_display             PRIVATE ${BITTERS_SOURCES_${sub}})
+            target_compile_definitions(moses_display PRIVATE BITTERS_WITH_${sub})
+        endforeach()
+        target_link_libraries(moses_display PRIVATE bitters)
+
+    elseif (DISPLAY_BACKEND STREQUAL "sdl")
+        # A window on a development machine. No bitters, no GPIO, no SPI,
+        # and with gpio.c split out of moses_common, nothing Linux-only
+        # in the whole program.
+        target_sources(moses_display PRIVATE src/display/backend/sdl.c)
+        target_link_libraries(moses_display PRIVATE SDL2::SDL2)
+
+    else()
+        message(FATAL_ERROR
+            "DISPLAY_BACKEND must be automation-hat-mini or sdl "
+            "(got \"${DISPLAY_BACKEND}\")")
+    endif()
+endif()
+
+# The screenshot tests. Deliberately independent of WITH_DISPLAY and of
+# moses_common: dashboard.c and model.c reach nothing but LVGL, so this
+# links neither the panel, nor mosquitto, nor anything Linux-only, and
+# builds wherever LVGL does. The reference images live under
+# test/ref-imgs/; see REF_IMGS_PATH above.
+if (WITH_DISPLAY_TESTS)
+    enable_testing()
+
+    add_executable(test_dashboard
+        test/test_dashboard.c
+        src/display/dashboard.c
+        src/display/model.c
+        src/display/ups_estimate.c)
+    target_include_directories(test_dashboard PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/display)
+    target_link_libraries(test_dashboard PRIVATE lvgl::lvgl Threads::Threads m)
+    add_test(NAME dashboard COMMAND test_dashboard)
 endif()

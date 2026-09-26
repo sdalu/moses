@@ -158,6 +158,15 @@ struct gpio_v2_line_request;            // <linux/gpio.h>, only consumers need i
  * Misc                                                                 *
  ************************************************************************/
 
+// The program name DIE() reports with. Provided by libc, and set from
+// basename(argv[0]) in main(); declared here so DIE() can be used from
+// any of a program's translation units and not just the one holding
+// main. The three daemons also define one of their own, which shadows
+// libc's on glibc -- do not copy that into anything new, because on a
+// libc that puts __progname in crt1.o (FreeBSD) it is a duplicate
+// symbol and will not link.
+extern char *__progname;
+
 #define DIE(code, fmt, ...)						\
     do {								\
 	fprintf(stderr, "%s: " fmt "\n" , __progname			\
