@@ -30,13 +30,23 @@ is sometimes that the checker is wrong rather than the file.
       if the screen was *meant* to change. A reference nobody looked at
       proves nothing.
 - [ ] `make build FLAVOUR=viewer` -- **if this round touched
-      `src/display/` outside `dashboard.c` and `model.c`**: a backend, a
-      source, `display.c`. `make tests` builds none of that, and
-      `tests-display` links neither the panel nor the sources, so a file
-      left out of a CMake target compiles clean everywhere above and
-      fails only here. On the Pi this is `FLAVOUR=device` and an
-      overnight LVGL build; the viewer is the same first-party code
-      against SDL.
+      `src/display/` outside `dashboard.c` and `model.c`**: a source,
+      `display.c`, `backend/sdl.c`. `make tests` builds none of that and
+      `tests-display` links none of it, so a file left out of a CMake
+      target compiles clean everywhere above and fails only here.
+- [ ] **A backend under `src/display/backend/` is not covered by the
+      line above.** `viewer` compiles `sdl.c` and `device` compiles
+      `rpi-automation-hat-mini.c`, so only `FLAVOUR=device` on a Linux
+      host builds the hat backend -- an overnight LVGL build. Short of
+      that, compile the one translation unit with the flags a real build
+      used, which is a genuine compile and not a syntax check:
+
+          cc $(sed -n 's/^C_\(DEFINES\|INCLUDES\|FLAGS\) = //p' \
+                  build/CMakeFiles/moses_display.dir/flags.make) \
+             -Werror -c src/display/backend/<file>.c -o /tmp/check.o
+
+      Compile the unmodified file the same way first; a warning the
+      baseline already had is not this round's.
 - [ ] `make tests WITH_WERROR=yes` -- CI builds this way, and the Pi's
       GCC is stricter than a clang workstation. A new warning is a
       failure here, not a note.
@@ -58,8 +68,9 @@ this morning is a claim, not a fact.
 - [ ] `README.md`, `docs/*.md`, `test/README.md` -- does every flag,
       path, topic and command they name still exist, and does a reader
       following their recipes get the tests they say they get? A
-      section that moves between them takes its citations with it:
-      the code comments cite them as `docs/hardware.md, *LCD*`.
+      section that moves between them takes its citations with it: the
+      code comments cite a file and a section, `docs/hardware.md` and
+      *LCD*.
 - [ ] `DESIGN.md` -- did this round decide something, or invalidate a
       reason written there? A decision worked out through iteration is
       recorded in the same unit of work or not at all.
