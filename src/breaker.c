@@ -47,8 +47,6 @@
 #include <getopt.h>
 #include <libgen.h>
 
-#include <mosquitto.h>
-
 #include "common.h"
 #include "breaker_state.h"
 
@@ -128,8 +126,26 @@ struct breaker breaker =  {
  *       1 = at least once
  *       2 = exactly once
  */
-void on_connect(struct mosquitto *mosq, void *obj, int reason_code);
+
+/*
+ * The setter handler exists only where MQTT does.
+ *
+ * Without it there is no struct mosquitto_message to take apart --
+ * common.h only forward-declares the type when the library is absent --
+ * and nothing would ever call this anyway, MQTT being the only way a
+ * state/set command arrives. Built without it, moses_breaker still does
+ * the rest of its job: it holds the line, publishes its state to
+ * whatever sinks there are, and fails the valve open when it stops.
+ *
+ * With WITH_MQTT set, which is the deployed configuration, this file is
+ * exactly what it was.
+ */
+#ifdef WITH_MQTT
 void on_message(struct mosquitto *mosq, void *obj, const struct mosquitto_message *msg);
+#define BREAKER_ON_MESSAGE	on_message
+#else
+#define BREAKER_ON_MESSAGE	NULL
+#endif
 
 
 
@@ -195,7 +211,7 @@ breaker_mqtt_init(struct breaker_mqtt *mqtt)
     int rc = mqtt_connect(&mqtt->handler, 1, &(struct mqtt_subscription) {
 	    .topic = mqtt->topic.setter,
 	    .qos   = 1,
-	}, mqtt->topic.avail, on_message);
+	}, mqtt->topic.avail, BREAKER_ON_MESSAGE);
     if (rc < 0) return -1;
     if (rc > 0) LOG("MQTT connection established");
 
@@ -434,6 +450,7 @@ main(int argc, char **argv)
 
 
 // Callback called when the client receives a message.
+#ifdef WITH_MQTT
 void
 on_message(struct mosquitto *mosq, void *obj,
 	   const struct mosquitto_message *msg)
@@ -464,4 +481,5 @@ on_message(struct mosquitto *mosq, void *obj,
 	}
     }
 }
+#endif	/* WITH_MQTT */
 

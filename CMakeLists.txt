@@ -52,11 +52,11 @@ set(MOSES_DGRAM_PATH "/run/moses.sock" CACHE STRING "Local datagram socket")
 #
 # One option per program rather than one for all three, because they do
 # not cost the same to build and do not need the same things present:
-# only the watermeter wants M-Bus, only the breaker cannot exist without
-# a broker to be commanded through, and a machine may legitimately want
-# one of them and not the others.
+# only the watermeter wants M-Bus, only the breaker is commanded rather
+# than merely read, and a machine may legitimately want one of them and
+# not the others.
 option(WITH_WATERMETER "Build moses_watermeter (needs M-Bus)"              ON)
-option(WITH_BREAKER    "Build moses_breaker (needs MQTT to be commanded)"  ON)
+option(WITH_BREAKER    "Build moses_breaker (MQTT is how it is commanded)" ON)
 option(WITH_TEMPERATURE "Build moses_sensors, the BME280 reader"           ON)
 option(WITH_DISPLAY "Build moses_display, the LVGL front panel (needs a C++ compiler)" OFF)
 option(WITH_DISPLAY_TESTS "Build the display screenshot tests (implies LVGL)"          OFF)
@@ -173,10 +173,10 @@ if (NOT WITH_MQTT)
             "subscribes, so there is nothing for it to show without a broker")
     endif()
     if (WITH_BREAKER)
-        message(FATAL_ERROR
-            "WITH_BREAKER needs WITH_MQTT: `state/set` is the only way to "
-            "command the valve, so without a broker moses_breaker would open "
-            "a GPIO and wait forever")
+        message(STATUS
+            "WITH_MQTT=OFF: moses_breaker cannot be commanded -- `state/set` "
+            "is the only way in -- but it still holds the line, reports its "
+            "state to whatever sinks are on, and fails the valve open")
     endif()
 endif()
 
