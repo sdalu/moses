@@ -217,8 +217,13 @@ static int dgram_fd = -1;
 const char *
 dgram_path(void)
 {
+    /* The two names differ on purpose. DGRAM_PATH is the build's, and
+     * sits in the project's own namespace beside WITH_DGRAM and
+     * MQTT_TOPIC_PREFIX, none of which are prefixed. The environment is
+     * shared with every other program on the machine, so the variable
+     * there is MOSES_DGRAM_PATH, where the prefix earns its place. */
     const char *path = getenv("MOSES_DGRAM_PATH");
-    return path ? path : MOSES_DGRAM_PATH;
+    return path ? path : DGRAM_PATH;
 }
 
 

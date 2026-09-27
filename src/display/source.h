@@ -5,7 +5,7 @@
  * That is the whole of the contract: it is handed what it needs to
  * reach its data, it runs until the program ends, and it never draws.
  *
- * There are two, and they differ in kind rather than in interface:
+ * There are three, and they differ in kind rather than in interface:
  *
  *   source-mqtt  what the other moses daemons publish -- the valve, the
  *                meter index, the pulse counter and the temperature.
@@ -96,8 +96,7 @@ const char *source_nut_name(void);
  * Bind the local datagram socket and read it, on its own thread.
  *
  * The path is dgram_path() -- $MOSES_DGRAM_PATH, or the compiled-in
- * MOSES_DGRAM_PATH. This is the end that binds; the daemons only ever
- * send.
+ * DGRAM_PATH. This is the end that binds; the daemons only ever send.
  *
  * Refuses rather than takes the address when the path is an existing
  * non-socket file, or when another consumer is already bound to it: both

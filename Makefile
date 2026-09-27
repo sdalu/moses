@@ -86,7 +86,7 @@ MQTT_TOPIC_PREFIX ?= water-breaker
 # directory is actually there -- and sockaddr_un.sun_path is 104 bytes on
 # the BSDs, so a long path is refused outright and short beats tidy.
 RUNDIR		!= if [ -d /run ]; then echo /run; else echo /var/run; fi
-MOSES_DGRAM_PATH ?= $(RUNDIR)/moses.sock
+DGRAM_PATH	?= $(RUNDIR)/moses.sock
 
 # Empty lets bitters find the Pi's GPIO controller by asking each chip
 # for its label, which is what makes one binary work on a Zero and a Pi
@@ -108,7 +108,7 @@ CMAKEFLAGS	 = -DWITH_MQTT=$(ON_$(WITH_MQTT))
 CMAKEFLAGS	+= -DWITH_LINEPROTOCOL=$(ON_$(WITH_LINEPROTOCOL))
 CMAKEFLAGS	+= -DWITH_DGRAM=$(ON_$(WITH_DGRAM))
 CMAKEFLAGS	+= -DMQTT_TOPIC_PREFIX=$(MQTT_TOPIC_PREFIX)
-CMAKEFLAGS	+= -DMOSES_DGRAM_PATH=$(MOSES_DGRAM_PATH)
+CMAKEFLAGS	+= -DDGRAM_PATH=$(DGRAM_PATH)
 CMAKEFLAGS	+= -DWITH_WATERMETER=$(ON_$(WITH_WATERMETER))
 CMAKEFLAGS	+= -DWITH_BREAKER=$(ON_$(WITH_BREAKER))
 CMAKEFLAGS	+= -DWITH_TEMPERATURE=$(ON_$(WITH_TEMPERATURE))
@@ -188,7 +188,7 @@ help:						## show this help (the default)
 	    DESTDIR		'$(DESTDIR)  (staging prefix for packaging)'  \
 	    DISPLAY_BACKEND	'$(DISPLAY_BACKEND)  (one of: automation-hat-mini sdl)' \
 	    MQTT_TOPIC_PREFIX	'$(MQTT_TOPIC_PREFIX)  (compiled-in default topic prefix)' \
-	    MOSES_DGRAM_PATH	'$(MOSES_DGRAM_PATH)  (the socket, when WITH_DGRAM)' \
+	    DGRAM_PATH		'$(DGRAM_PATH)  (the socket, when WITH_DGRAM)' \
 	    RPI_GPIO_CHIP	'$(RPI_GPIO_CHIP)  (empty: bitters finds it by label)'
 	@echo ''
 	@echo 'Where a reading goes (yes/no, and none of them exclusive):'
@@ -198,7 +198,7 @@ help:						## show this help (the default)
 	    WITH_LINEPROTOCOL	'$(WITH_LINEPROTOCOL)'			      \
 		'(stdout, as InfluxDB line protocol)'			      \
 	    WITH_DGRAM		'$(WITH_DGRAM)'				      \
-		'(the same line to $(MOSES_DGRAM_PATH))'
+		'(the same line to $(DGRAM_PATH))'
 	@echo ''
 	@echo 'What gets built (yes/no; see `make options`):'
 	@printf '  %-20s %-4s %s\n'					      \
@@ -381,12 +381,15 @@ options:					## every build knob, and what it defaults to
 	@echo 'Set any of them on the command line: make tests WITH_WERROR=yes'
 	@echo ''
 	@echo 'Where a reading goes -- three sinks, none of them exclusive:'
-	@printf '  %-20s %-16s %s\n'					\
+	@printf '  %-20s %-4s %s\n'					\
 	    'WITH_MQTT'		 'yes'	'publish to the broker'		\
 	    'WITH_LINEPROTOCOL'	 'no'	'one line per reading on stdout' \
-	    'WITH_DGRAM'	 'no'	'the same line to a unix datagram socket' \
+	    'WITH_DGRAM'	 'no'	'the same line to a unix datagram socket'
+	@echo ''
+	@echo 'Where those two point:'
+	@printf '  %-20s %-20s %s\n'					\
 	    'MQTT_TOPIC_PREFIX'	 'water-breaker'	'compiled-in topic prefix' \
-	    'MOSES_DGRAM_PATH'	 '$(MOSES_DGRAM_PATH)' 'the socket it goes to'
+	    'DGRAM_PATH'	 '$(DGRAM_PATH)' 'the socket, when WITH_DGRAM'
 	@echo ''
 	@echo 'What gets built:'
 	@printf '  %-20s %-4s %s\n'					\

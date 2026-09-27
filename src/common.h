@@ -294,7 +294,9 @@ void mqtt_config_from_env(struct mqtt *mqtt);
 
 #ifdef WITH_DGRAM
 // The socket the readings go to: $MOSES_DGRAM_PATH, or the compiled-in
-// default. The consumer binds it; producers only ever send.
+// DGRAM_PATH. The consumer binds it; producers only ever send. The
+// environment keeps the prefix and the build knob does not -- see
+// dgram_path() in common.c for why.
 const char *dgram_path(void);
 #endif
 

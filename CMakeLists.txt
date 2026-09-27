@@ -44,7 +44,7 @@ option(WITH_DGRAM        "Also send each reading to a local unix datagram socket
 set(MQTT_TOPIC_PREFIX "water-breaker" CACHE STRING "Default prefix for topics")
 # sockaddr_un.sun_path is 104 bytes on the BSDs and 108 on Linux, and a
 # path too long to fit is refused rather than truncated -- keep it short.
-set(MOSES_DGRAM_PATH "/run/moses.sock" CACHE STRING "Local datagram socket")
+set(DGRAM_PATH "/run/moses.sock" CACHE STRING "Local datagram socket")
 
 # Which GPIO controller the Raspberry Pi pins are on, when it is worth
 # saying rather than letting bitters look.
@@ -117,7 +117,7 @@ if (WITH_MQTT)
 endif()
 if (WITH_DGRAM)
     add_compile_definitions(WITH_DGRAM)
-    add_compile_definitions(MOSES_DGRAM_PATH="${MOSES_DGRAM_PATH}")
+    add_compile_definitions(DGRAM_PATH="${DGRAM_PATH}")
 endif()
 
 
