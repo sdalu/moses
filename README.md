@@ -990,6 +990,83 @@ The UPS is not on this bus at all. `nut-notify` publishes to MQTT and
 `upsd` is asked directly, so the battery comes from one of those two
 however this is configured.
 
+#### From the command line
+
+Everything below runs on the Pi. `busctl` comes with systemd;
+`dbus-send`, `dbus-monitor` and `gdbus` are the same thing without it,
+and one of each is shown where the spelling differs.
+
+**Who is on the bus.** A name with no owner is a daemon that is not
+running, or whose name the policy refused:
+
+~~~sh
+busctl list | grep moses                       # names, owning PID and user
+busctl status moses.breaker                    # PID, UID and command line
+busctl status moses.breaker >/dev/null 2>&1 || echo "breaker is down"
+gdbus wait --system --timeout 30 moses.breaker # block until it is up
+~~~
+
+**What a daemon last said**, one line per kind:
+
+~~~sh
+busctl get-property moses.watermeter /moses/watermeter moses.Readings Lines
+#   as 2 "watermeter index=213044.000 1790489588441408829" "watermeter pulse=3 1790489648441408829"
+
+dbus-send --system --print-reply --dest=moses.watermeter /moses/watermeter \
+    org.freedesktop.DBus.Properties.Get string:moses.Readings string:Lines
+~~~
+
+`--json=short` makes the same answer machine-readable, and `jq` plus
+`awk` pulls one figure out of the line:
+
+~~~sh
+busctl --json=short get-property moses.watermeter /moses/watermeter moses.Readings Lines \
+  | jq -r '.data[]' \
+  | awk '$1 == "watermeter" && $2 ~ /^index=/ { sub("index=", "", $2); print $2 }'
+#   213044.000
+~~~
+
+**Readings as they happen**, each a `Line` signal from `/moses/<daemon>`:
+
+~~~sh
+busctl monitor --match "type='signal',interface='moses.Readings'"
+dbus-monitor --system "type='signal',interface='moses.Readings'"
+~~~
+
+And daemons coming and going, which is the bus's own signal for names
+under `moses.`:
+
+~~~sh
+dbus-monitor --system "type='signal',sender='org.freedesktop.DBus',member='NameOwnerChanged',arg0namespace='moses'"
+~~~
+
+**What an object offers.** The breaker shows `moses.Readings` and
+`moses.Actuator`; the other two show `moses.Readings` alone:
+
+~~~sh
+busctl introspect moses.breaker /moses/breaker
+gdbus introspect --system --dest moses.breaker --object-path /moses/breaker
+~~~
+
+**Shutting the water**, as root, with what `state/set` takes:
+
+~~~sh
+sudo busctl call moses.breaker /moses/breaker moses.Actuator SetState s 1   # close
+sudo busctl call moses.breaker /moses/breaker moses.Actuator SetState s 0   # open
+~~~
+
+Anyone else gets `AccessDenied` from `dbus-daemon` before the call
+reaches the daemon; a non-state gets `InvalidArgs` back from the daemon;
+a relay that would not move gets `Failed`, and the daemon raises its
+usual `critical` error as well. That is the whole of a local override
+for when the broker is unreachable — a watchdog on the Pi that decides
+the water has run for too long needs the one line above and nothing
+else.
+
+Every answer is a line of the [line protocol](#line-protocol-output),
+so a consumer parses `measurement field=value,... timestamp`, with the
+timestamp in nanoseconds, exactly as it would parse stdout.
+
 `src/dbus_sink.c` is the producing half and `src/display/source-dbus.c`
 the consuming one; `test/test_dbus.c` runs the two through a real
 `dbus-daemon` that `dbus-run-session` starts for it, and checks exactly
