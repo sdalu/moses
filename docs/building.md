@@ -28,13 +28,38 @@ compiled from `3rd/libmbus` with no install step. To link an installed
 copy instead, name it: `cmake -DMBUS_LIBRARY=… -DMBUS_INCLUDE_DIR=…`.
 
 libmbus's command-line tools are the quickest check that the meter
-answers before any daemon is involved. The build does not make them;
-they come with a full install of libmbus, done outside this tree:
+answers before any daemon is involved:
 
 ~~~sh
 mbus-serial-scan -b 2400 /dev/ttyAMA0            # find its address
 mbus-serial-request-data -b 2400 /dev/ttyAMA0 1  # read it
 ~~~
+
+### libmbus tools
+
+The build does not make those tools; they come with a full install of
+libmbus. To put one under `/opt/libmbus`, from a clone of its own at the
+tag the submodule is pinned to — not in `3rd/libmbus`, where autotools
+would leave its files behind:
+
+~~~sh
+apt install autoconf automake libtool libltdl-dev
+git clone --branch 0.10.3 --depth 1 https://github.com/rscada/libmbus /tmp/libmbus
+cd /tmp/libmbus
+./build.sh
+./configure --prefix=/opt/libmbus --disable-shared
+make clean
+make
+make install
+~~~
+
+The tools land in `/opt/libmbus/bin` with the library linked into them,
+so nothing has to be told where to find it at run time. `build.sh` has
+already configured and built once, without a prefix; `make clean` is
+what makes the second build honour `--disable-shared` rather than keep
+the shared library it linked the first time. This install is for the
+tools only: the build keeps using `3rd/libmbus` unless `MBUS_LIBRARY`
+names it.
 
 
 Flavours
