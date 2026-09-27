@@ -23,6 +23,7 @@ JOBS		!= (nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)
 
 PREFIX		?= /usr/local
 BINDIR		?= $(PREFIX)/bin
+DBUSDIR		?= $(PREFIX)/dbus
 DESTDIR		?=
 
 #
@@ -157,6 +158,12 @@ ANY_noyesno	= yes
 ANY_nonoyes	= yes
 ANY_nonono	= no
 
+# The bus policy, with WITH_DBUS. Put down beside the binaries rather
+# than into dbus-daemon's own directory, which is /etc and not PREFIX's
+# to write: docs/building.md, *Install*, says where it goes from here.
+DBUSCONF_yes	= dbus/moses.conf
+DBUSCONF_no	=
+
 INSTALL_FILES	= $(METER_$(WITH_WATERMETER)) $(VALVE_$(WITH_BREAKER))	\
 		  $(TEMP_$(WITH_TEMPERATURE)) $(SCREEN_$(WITH_DISPLAY))	\
 		  $(HELP_$(ANY_$(ANY)))
@@ -195,6 +202,7 @@ help:						## show this help (the default)
 	    CMAKE		'$(CMAKE)'				      \
 	    JOBS		'$(JOBS)  (parallel build jobs; cores by default)' \
 	    PREFIX		'$(PREFIX)  (install goes to $(BINDIR))'      \
+	    DBUSDIR		'$(DBUSDIR)  (install puts the bus policy here)' \
 	    DESTDIR		'$(DESTDIR)  (staging prefix for packaging)'  \
 	    DISPLAY_BACKEND	'$(DISPLAY_BACKEND)  (one of: automation-hat-mini sdl)' \
 	    MQTT_TOPIC_PREFIX	'$(MQTT_TOPIC_PREFIX)  (compiled-in default topic prefix)' \
@@ -462,6 +470,12 @@ install: build					## install what this configuration built, under PREFIX
 	fi
 	$(INSTALL) -d $(DESTDIR)$(BINDIR)
 	$(INSTALL) -m 755 $(INSTALL_FILES) $(DESTDIR)$(BINDIR)
+	@if [ -n '$(DBUSCONF_$(WITH_DBUS))' ]; then set -ex;		\
+	    $(INSTALL) -d $(DESTDIR)$(DBUSDIR);				\
+	    $(INSTALL) -m 644 $(DBUSCONF_$(WITH_DBUS)) $(DESTDIR)$(DBUSDIR); \
+	fi
 
 uninstall:					## remove what install put down
 	cd $(DESTDIR)$(BINDIR) && rm -f $(INSTALLED)
+	rm -f $(DESTDIR)$(DBUSDIR)/moses.conf
+	-rmdir $(DESTDIR)$(DBUSDIR) 2>/dev/null

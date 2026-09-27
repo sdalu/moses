@@ -136,12 +136,15 @@ Install
 
 `make install` copies what the configuration built into `$(PREFIX)/bin`
 (`/usr/local` by default; `DESTDIR` stages it), and `make uninstall`
-removes it. With `WITH_DBUS`, the bus policy goes where `dbus-daemon`
-reads it, or the daemons cannot own their names:
+removes it. With `WITH_DBUS` it also puts the bus policy in
+`$(DBUSDIR)` (`$(PREFIX)/dbus`). That is only a copy: `dbus-daemon`
+reads its policy from `/etc`, which is not `PREFIX`'s to write, so it
+still has to go there, or the daemons cannot own their names and
+`moses_display --source=auto` reads the broker instead:
 
 ~~~sh
 make install FLAVOUR=sensors
-install -m 0644 dbus/moses.conf /etc/dbus-1/system.d/
+install -m 0644 /usr/local/dbus/moses.conf /etc/dbus-1/system.d/
 ~~~
 
 The scripts under `scripts/` — [`loop-runner`](programs.md#supervision)
