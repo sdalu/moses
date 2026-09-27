@@ -580,6 +580,11 @@ main(int argc, char **argv)
     if (watermeter_init(&watermeter) < 0)
 	DIE(2, "failed to initialize");
 
+    // On the system bus, when built with it (src/dbus_sink.h). Never
+    // fatal, and before reduced_latency() so its thread is an ordinary
+    // one rather than SCHED_FIFO.
+    DBUS_SINK_START("watermeter");
+
     // Reducing latency
     if (watermeter.reduced_latency)
 	reduced_latency();

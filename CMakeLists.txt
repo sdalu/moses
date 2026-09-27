@@ -30,21 +30,25 @@ endif()
 #                  other way to be told to shut the water.
 #   LINEPROTOCOL   one line per reading on stdout, for piping into a
 #                  time-series database.
-#   DGRAM          the same line to a unix datagram socket, for a
-#                  consumer on this machine -- no network, and nothing
-#                  lost when the network is.
+#   DBUS           the same line on the system bus, for a consumer on
+#                  this machine -- no network, and nothing lost when
+#                  the network is. Each daemon owns a name there and
+#                  keeps the last line of each kind, so a consumer that
+#                  starts late still gets them and knows who is alive
+#                  (src/dbus_sink.h). The breaker also takes its command
+#                  there -- SetState, root only -- so it can be shut
+#                  from this machine with the broker unreachable. Needs
+#                  libdbus, and dbus/moses.conf installed for the bus
+#                  to let the daemons own their names.
 #
 # The last two share one formatter (put_data(), put_fail()), so they
 # cannot render the same reading differently.
 #
 option(WITH_MQTT         "Speak MQTT (off drops libmosquitto entirely)"     ON)
 option(WITH_LINEPROTOCOL "Write each reading to stdout as InfluxDB line protocol" OFF)
-option(WITH_DGRAM        "Also send each reading to a local unix datagram socket" OFF)
+option(WITH_DBUS         "Also put each reading on the system bus (needs libdbus)" OFF)
 
 set(MQTT_TOPIC_PREFIX "water-breaker" CACHE STRING "Default prefix for topics")
-# sockaddr_un.sun_path is 104 bytes on the BSDs and 108 on Linux, and a
-# path too long to fit is refused rather than truncated -- keep it short.
-set(DGRAM_PATH "/run/moses.sock" CACHE STRING "Local datagram socket")
 
 # Which GPIO controller the Raspberry Pi pins are on, when it is worth
 # saying rather than letting bitters look.
@@ -140,9 +144,8 @@ endif()
 if (WITH_MQTT)
     target_compile_definitions(moses_defs INTERFACE WITH_MQTT)
 endif()
-if (WITH_DGRAM)
-    target_compile_definitions(moses_defs INTERFACE
-        WITH_DGRAM DGRAM_PATH="${DGRAM_PATH}")
+if (WITH_DBUS)
+    target_compile_definitions(moses_defs INTERFACE WITH_DBUS)
 endif()
 
 
@@ -196,15 +199,17 @@ endif()
 # protocol on stdout: src/common.c compiles its MQTT half out and
 # libmosquitto leaves the link entirely.
 #
-# Two of the programs cannot mean anything without it, and are refused
-# rather than built into something useless:
+# One program cannot mean anything without it, and is refused rather
+# than built into something useless: moses_display is a subscriber and
+# nothing else.
 #
-#   moses_breaker   `state/set` is the only way to command the valve, so
-#                   without MQTT it would open a GPIO and wait forever.
-#                   A valve controller that cannot be told to close is
-#                   worse than no valve controller, because it looks
-#                   like one.
-#   moses_display   it is a subscriber and nothing else.
+# moses_breaker has two ways to be commanded, `state/set` over the
+# broker and SetState over the system bus, and is built as long as it
+# has one. With WITH_DBUS on it is commanded from this machine alone,
+# which is a valve controller with a shorter reach rather than a
+# useless one. With both off it holds the line, reports its state, and
+# cannot be told to close -- said at configure time, below, because a
+# valve controller that cannot be told to close looks like one that can.
 #
 # moses_watermeter and moses_sensors still do their job: they read their
 # hardware and write it out.
@@ -215,11 +220,16 @@ if (NOT WITH_MQTT)
             "WITH_DISPLAY needs WITH_MQTT: moses_display only ever "
             "subscribes, so there is nothing for it to show without a broker")
     endif()
-    if (WITH_BREAKER)
+    if (WITH_BREAKER AND WITH_DBUS)
+        message(STATUS
+            "WITH_MQTT=OFF: moses_breaker is commanded over the system bus "
+            "only -- SetState on moses.Actuator, root only (dbus/moses.conf)")
+    elseif (WITH_BREAKER)
         message(STATUS
             "WITH_MQTT=OFF: moses_breaker cannot be commanded -- `state/set` "
-            "is the only way in -- but it still holds the line, reports its "
-            "state to whatever sinks are on, and fails the valve open")
+            "and the bus's SetState are the only ways in, and WITH_DBUS is "
+            "off too -- but it still holds the line, reports its state to "
+            "whatever sinks are on, and fails the valve open")
     endif()
 endif()
 
@@ -233,6 +243,17 @@ endif()
 if (NEED_MBUS)
     find_path(   MBUS_INCLUDE_DIR NAMES mbus/mbus.h REQUIRED HINTS /opt/libmbus/include)
     find_library(MBUS_LIBRARY     NAMES mbus        REQUIRED HINTS /opt/libmbus/lib)
+endif()
+
+# libdbus -- the system bus sink in the daemons, the source in
+# moses_display, and the test that runs the two against a private bus.
+# Wanted by anything WITH_DBUS puts on the bus, which is everything
+# moses_common goes into, and by the test on its own; not looked for
+# at all when the knob is off, so a machine without it still configures.
+if (WITH_DBUS AND (NEED_COMMON OR WITH_TESTS))
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(DBUS REQUIRED IMPORTED_TARGET dbus-1)
+    message(STATUS "libdbus ${DBUS_VERSION}")
 endif()
 
 
@@ -306,6 +327,13 @@ target_link_libraries(moses_common PUBLIC moses_defs Threads::Threads m)
 if (WITH_MQTT)
     target_link_libraries(moses_common PUBLIC ${MOSQUITTO_LIBRARY})
 endif()
+# The bus sink goes with the formatter it is fed by. PUBLIC, so that
+# moses_display -- which links this and adds its own consuming half --
+# gets libdbus from the same place.
+if (WITH_DBUS)
+    target_sources(moses_common PRIVATE src/dbus_sink.c)
+    target_link_libraries(moses_common PUBLIC PkgConfig::DBUS)
+endif()
 endif()
 
 
@@ -357,15 +385,17 @@ endif()
 # and is not warning-clean.
 #
 set(MOSES_SOURCES
-    src/common.c src/gpio.c
+    src/common.c src/gpio.c src/dbus_sink.c
     src/watermeter.c src/breaker.c src/breaker_state.c src/sensors.c
     src/display.c src/display/backend/sdl.c
     src/display/dashboard.c src/display/model.c
     src/display/backend/rpi-automation-hat-mini.c
     src/display/source-mqtt.c src/display/source-nut.c
+    src/display/source-dbus.c src/display/lineproto.c
     src/display/payload.c src/display/ups_estimate.c
     test/test_parsers.c test/test_breaker_state.c test/test_ups_estimate.c
-    test/test_payload.c test/test_dashboard.c)
+    test/test_payload.c test/test_dashboard.c test/test_lineproto.c
+    test/test_dbus.c)
 
 if (WITH_WERROR)
     set_property(SOURCE ${MOSES_SOURCES} APPEND PROPERTY COMPILE_OPTIONS -Werror)
@@ -416,11 +446,11 @@ if (WITH_TESTS)
     target_link_libraries(test_payload PRIVATE moses_defs m)
     add_test(NAME payload COMMAND test_payload)
 
-    # The line protocol the local datagram socket carries, read back.
-    # Built whatever WITH_DGRAM says: lineproto.c is deliberately free of
-    # the socket -- and of mosquitto, LVGL and anything Linux-only -- so
-    # the parser that decides what figure reaches the panel can be
-    # checked on any machine, which is the same reason test_payload and
+    # The line protocol the system bus carries, read back. Built
+    # whatever WITH_DBUS says: lineproto.c is deliberately free of the
+    # bus -- and of mosquitto, LVGL and anything Linux-only -- so the
+    # parser that decides what figure reaches the panel can be checked
+    # on any machine, which is the same reason test_payload and
     # test_breaker_state exist. It takes breaker_state.c because a
     # `state` field is read with the very parser moses_breaker reads its
     # own commands with.
@@ -432,6 +462,36 @@ if (WITH_TESTS)
     target_include_directories(test_lineproto PRIVATE src src/display)
     target_link_libraries(test_lineproto PRIVATE moses_defs m)
     add_test(NAME lineproto COMMAND test_lineproto)
+
+    # The bus itself: a daemon's sink and the display's source, through
+    # a real dbus-daemon that dbus-run-session starts for the occasion.
+    # Only under WITH_DBUS, since that is the code it tests, and free of
+    # mosquitto, LVGL and Linux like the rest -- it is deliberately not
+    # linked against moses_common or moses_defs, so that common.h is
+    # read without WITH_MQTT and pulls in no mosquitto.h on a machine
+    # that has none. Without dbus-run-session it is built and not run;
+    # run by hand it says SKIP and exits 77 when there is no bus.
+    if (WITH_DBUS)
+        add_executable(test_dbus
+            test/test_dbus.c
+            src/dbus_sink.c
+            src/display/source-dbus.c
+            src/display/model.c
+            src/display/lineproto.c
+            src/display/payload.c
+            src/breaker_state.c)
+        target_include_directories(test_dbus PRIVATE src src/display)
+        target_compile_definitions(test_dbus PRIVATE WITH_DBUS)
+        target_link_libraries(test_dbus PRIVATE PkgConfig::DBUS Threads::Threads m)
+
+        find_program(DBUS_RUN_SESSION dbus-run-session)
+        if (DBUS_RUN_SESSION)
+            add_test(NAME dbus COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:test_dbus>)
+            set_tests_properties(dbus PROPERTIES SKIP_RETURN_CODE 77)
+        else()
+            message(STATUS "dbus-run-session not found: test_dbus is built but not run")
+        endif()
+    endif()
 endif()
 
 
@@ -515,13 +575,14 @@ if (WITH_DISPLAY)
         src/display/source-nut.c
         src/display/ups_estimate.c)
 
-    # The local socket's consuming half. Only under WITH_DGRAM, which is
-    # also what puts the sending half into the daemons -- there is no
-    # point binding a socket nothing writes to.
-    if (WITH_DGRAM)
+    # The bus's consuming half. Only under WITH_DBUS, which is also what
+    # puts the producing half into the daemons -- there is no point
+    # watching a bus nothing speaks on. libdbus itself arrives through
+    # moses_common, which links it PUBLIC for the same reason.
+    if (WITH_DBUS)
         target_sources(moses_display PRIVATE
             src/display/lineproto.c
-            src/display/source-unix.c)
+            src/display/source-dbus.c)
     endif()
     target_include_directories(moses_display PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/display

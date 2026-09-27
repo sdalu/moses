@@ -45,8 +45,8 @@ DESTDIR		?=
 #
 # The sinks go with the machine, which is why they are here and not
 # standalone defaults. Where the daemons run -- device and sensors --
-# all three are on: the broker for everything off the box, the local
-# socket for the panel beside it, and stdout for whatever is collecting
+# all three are on: the broker for everything off the box, the system
+# bus for the panel beside it, and stdout for whatever is collecting
 # lines. They are not alternatives and cost nothing to have together,
 # one formatter feeding each of them. The viewer produces no readings at
 # all, so it has only the broker, which is where it reads them from.
@@ -63,21 +63,21 @@ FLAVOUR_device_DISPLAY        = yes
 FLAVOUR_device_BACKEND        = automation-hat-mini
 FLAVOUR_device_MQTT           = yes
 FLAVOUR_device_LINEPROTOCOL   = yes
-FLAVOUR_device_DGRAM          = yes
+FLAVOUR_device_DBUS           = yes
 
 FLAVOUR_sensors_PROGRAMS      = yes
 FLAVOUR_sensors_DISPLAY       = no
 FLAVOUR_sensors_BACKEND       = automation-hat-mini
 FLAVOUR_sensors_MQTT          = yes
 FLAVOUR_sensors_LINEPROTOCOL  = yes
-FLAVOUR_sensors_DGRAM         = yes
+FLAVOUR_sensors_DBUS          = yes
 
 FLAVOUR_viewer_PROGRAMS       = no
 FLAVOUR_viewer_DISPLAY        = yes
 FLAVOUR_viewer_BACKEND        = sdl
 FLAVOUR_viewer_MQTT           = yes
 FLAVOUR_viewer_LINEPROTOCOL   = no
-FLAVOUR_viewer_DGRAM          = no
+FLAVOUR_viewer_DBUS           = no
 
 # The build knobs, as CMakeLists.txt names them. Kept as yes/no here and
 # turned into CMake's ON/OFF by the indirection below, because `ifeq` is
@@ -89,7 +89,7 @@ WITH_WATERMETER	?= $(FLAVOUR_$(FLAVOUR)_PROGRAMS)
 WITH_BREAKER	?= $(FLAVOUR_$(FLAVOUR)_PROGRAMS)
 WITH_TEMPERATURE ?= $(FLAVOUR_$(FLAVOUR)_PROGRAMS)
 WITH_MQTT	?= $(FLAVOUR_$(FLAVOUR)_MQTT)
-WITH_DGRAM	?= $(FLAVOUR_$(FLAVOUR)_DGRAM)
+WITH_DBUS	?= $(FLAVOUR_$(FLAVOUR)_DBUS)
 WITH_DISPLAY	?= $(FLAVOUR_$(FLAVOUR)_DISPLAY)
 WITH_DISPLAY_TESTS ?= no
 WITH_WERROR	?= no
@@ -97,15 +97,6 @@ WITH_ANALYZER	?= no
 
 DISPLAY_BACKEND	?= $(FLAVOUR_$(FLAVOUR)_BACKEND)
 MQTT_TOPIC_PREFIX ?= water-breaker
-
-# The socket's directory is not the same everywhere: Linux has /run,
-# where FreeBSD has only /var/run, and a path that does not exist is a
-# bind() that fails at startup rather than a warning at build time. Asked
-# of the filesystem rather than of `uname`, because what matters is which
-# directory is actually there -- and sockaddr_un.sun_path is 104 bytes on
-# the BSDs, so a long path is refused outright and short beats tidy.
-RUNDIR		!= if [ -d /run ]; then echo /run; else echo /var/run; fi
-DGRAM_PATH	?= $(RUNDIR)/moses.sock
 
 # Empty lets bitters find the Pi's GPIO controller by asking each chip
 # for its label, which is what makes one binary work on a Zero and a Pi
@@ -125,9 +116,8 @@ ON_no		= OFF
 # built, diagnostics.
 CMAKEFLAGS	 = -DWITH_MQTT=$(ON_$(WITH_MQTT))
 CMAKEFLAGS	+= -DWITH_LINEPROTOCOL=$(ON_$(WITH_LINEPROTOCOL))
-CMAKEFLAGS	+= -DWITH_DGRAM=$(ON_$(WITH_DGRAM))
+CMAKEFLAGS	+= -DWITH_DBUS=$(ON_$(WITH_DBUS))
 CMAKEFLAGS	+= -DMQTT_TOPIC_PREFIX=$(MQTT_TOPIC_PREFIX)
-CMAKEFLAGS	+= -DDGRAM_PATH=$(DGRAM_PATH)
 CMAKEFLAGS	+= -DWITH_WATERMETER=$(ON_$(WITH_WATERMETER))
 CMAKEFLAGS	+= -DWITH_BREAKER=$(ON_$(WITH_BREAKER))
 CMAKEFLAGS	+= -DWITH_TEMPERATURE=$(ON_$(WITH_TEMPERATURE))
@@ -207,7 +197,6 @@ help:						## show this help (the default)
 	    DESTDIR		'$(DESTDIR)  (staging prefix for packaging)'  \
 	    DISPLAY_BACKEND	'$(DISPLAY_BACKEND)  (one of: automation-hat-mini sdl)' \
 	    MQTT_TOPIC_PREFIX	'$(MQTT_TOPIC_PREFIX)  (compiled-in default topic prefix)' \
-	    DGRAM_PATH		'$(DGRAM_PATH)  (the socket, when WITH_DGRAM)' \
 	    RPI_GPIO_CHIP	'$(RPI_GPIO_CHIP)  (empty: bitters finds it by label)'
 	@echo ''
 	@echo 'Where a reading goes (yes/no, and none of them exclusive):'
@@ -216,8 +205,8 @@ help:						## show this help (the default)
 		'(the broker, and the only way moses_breaker is commanded)'   \
 	    WITH_LINEPROTOCOL	'$(WITH_LINEPROTOCOL)'			      \
 		'(stdout, as InfluxDB line protocol)'			      \
-	    WITH_DGRAM		'$(WITH_DGRAM)'				      \
-		'(the same line to $(DGRAM_PATH))'
+	    WITH_DBUS		'$(WITH_DBUS)'				      \
+		'(the same line on the system bus; needs libdbus)'
 	@echo ''
 	@echo 'What gets built (yes/no; see `make options`):'
 	@printf '  %-20s %-4s %s\n'					      \
@@ -380,9 +369,9 @@ flavours:					## the flavours, and the knobs each one stands for
 	    'WITH_LINEPROTOCOL'	'$(FLAVOUR_device_LINEPROTOCOL)'	\
 				'$(FLAVOUR_sensors_LINEPROTOCOL)'	\
 				'$(FLAVOUR_viewer_LINEPROTOCOL)'	\
-	    'WITH_DGRAM'	'$(FLAVOUR_device_DGRAM)'		\
-				'$(FLAVOUR_sensors_DGRAM)'		\
-				'$(FLAVOUR_viewer_DGRAM)'		\
+	    'WITH_DBUS'		'$(FLAVOUR_device_DBUS)'		\
+				'$(FLAVOUR_sensors_DBUS)'		\
+				'$(FLAVOUR_viewer_DBUS)'		\
 	    'WITH_WATERMETER'	'$(FLAVOUR_device_PROGRAMS)'		\
 				'$(FLAVOUR_sensors_PROGRAMS)'		\
 				'$(FLAVOUR_viewer_PROGRAMS)'		\
@@ -412,12 +401,11 @@ options:					## every build knob, and what it defaults to
 	@printf '  %-20s %-4s %s\n'					\
 	    'WITH_MQTT'		 'yes'	'publish to the broker'		\
 	    'WITH_LINEPROTOCOL'	 'no'	'one line per reading on stdout' \
-	    'WITH_DGRAM'	 'no'	'the same line to a unix datagram socket'
+	    'WITH_DBUS'		 'no'	'the same line on the system bus (needs libdbus)'
 	@echo ''
-	@echo 'Where those two point:'
+	@echo 'Where the broker one points:'
 	@printf '  %-20s %-20s %s\n'					\
-	    'MQTT_TOPIC_PREFIX'	 'water-breaker'	'compiled-in topic prefix' \
-	    'DGRAM_PATH'	 '$(DGRAM_PATH)' 'the socket, when WITH_DGRAM'
+	    'MQTT_TOPIC_PREFIX'	 'water-breaker'	'compiled-in topic prefix'
 	@echo ''
 	@echo 'What gets built:'
 	@printf '  %-20s %-4s %s\n'					\
@@ -440,7 +428,7 @@ options:					## every build knob, and what it defaults to
 	    'WITH_ANALYZER'	 'no'	'run the GCC static analyzer'
 
 features:					## what this invocation selected, as shell variables
-	@echo '# FLAVOUR=$(FLAVOUR) WITH_LOG=$(WITH_LOG) WITH_LINEPROTOCOL=$(WITH_LINEPROTOCOL) WITH_TESTS=$(WITH_TESTS) WITH_WATERMETER=$(WITH_WATERMETER) WITH_BREAKER=$(WITH_BREAKER) WITH_TEMPERATURE=$(WITH_TEMPERATURE) WITH_MQTT=$(WITH_MQTT) WITH_DGRAM=$(WITH_DGRAM) WITH_DISPLAY=$(WITH_DISPLAY) DISPLAY_BACKEND=$(DISPLAY_BACKEND)'
+	@echo '# FLAVOUR=$(FLAVOUR) WITH_LOG=$(WITH_LOG) WITH_LINEPROTOCOL=$(WITH_LINEPROTOCOL) WITH_TESTS=$(WITH_TESTS) WITH_WATERMETER=$(WITH_WATERMETER) WITH_BREAKER=$(WITH_BREAKER) WITH_TEMPERATURE=$(WITH_TEMPERATURE) WITH_MQTT=$(WITH_MQTT) WITH_DBUS=$(WITH_DBUS) WITH_DISPLAY=$(WITH_DISPLAY) DISPLAY_BACKEND=$(DISPLAY_BACKEND)'
 	@echo "MOSES_CMAKE_FLAGS='$(CMAKEFLAGS)'"
 	@echo "MOSES_BUILD='$(BUILD)'"
 

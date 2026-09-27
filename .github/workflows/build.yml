@@ -28,7 +28,7 @@ jobs:
     - name: Install packaged dependencies
       run: |
         sudo apt-get update
-        sudo apt-get -y install libmosquitto-dev libtool libtool-bin libltdl-dev m4
+        sudo apt-get -y install libmosquitto-dev libdbus-1-dev dbus libtool libtool-bin libltdl-dev m4
 
     # Pinned commit recorded in the superproject, used as the cache key.
     - name: Resolve libmbus revision
@@ -56,7 +56,7 @@ jobs:
         sudo make install
 
     - name: Configure
-      run: cmake -B build -DWITH_LOG=1 -DWITH_PUT=1 -DWITH_WERROR=1 -DWITH_TESTS=ON
+      run: cmake -B build -DWITH_LOG=1 -DWITH_PUT=1 -DWITH_WERROR=1 -DWITH_TESTS=ON -DWITH_DBUS=ON
 
     - name: Build
       run: cmake --build build --parallel "$(nproc)"
@@ -68,7 +68,7 @@ jobs:
     # plain build break. -fanalyzer is scoped to first-party sources.
     - name: Static analysis (gcc -fanalyzer)
       run: |
-        cmake -B build-analyze -DWITH_LOG=1 -DWITH_PUT=1 -DWITH_WERROR=1 -DWITH_ANALYZER=1
+        cmake -B build-analyze -DWITH_LOG=1 -DWITH_PUT=1 -DWITH_WERROR=1 -DWITH_ANALYZER=1 -DWITH_DBUS=ON
         cmake --build build-analyze --parallel "$(nproc)"
 
     - name: Upload executables

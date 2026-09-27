@@ -191,12 +191,32 @@ test_terminators(void)
 static void
 test_timestamp(void)
 {
-    /* Absent is allowed: it is not read, so its absence costs nothing */
+    /* Read to the second, and handed back on every reading of the line */
+    {
+	PARSE(LIT("environment temperature=21.42,pressure=102134,"
+		  "humidity=45.30 1790489588441408829"));
+	CHECK(ok);
+	CHECK(n == 1);
+	CHECK(r[0].at == (time_t)1790489588);
+    }
+
+    /* Absent is allowed, and reads as 0: "no usable timestamp" */
     {
 	PARSE(LIT("watermeter index=99"));
 	CHECK(ok);
 	CHECK(n == 1);
 	CHECK(NEAR(r[0].litres, 99));
+	CHECK(r[0].at == 0);
+    }
+
+    /* Digits, but too many to be a time: the line is read, the
+     * timestamp is not. Twenty-one digits is past what strtoull()
+     * holds, and a date from a saturated value is worse than none. */
+    {
+	PARSE(LIT("watermeter index=99 179048958844140882912"));
+	CHECK(ok);
+	CHECK(n == 1);
+	CHECK(r[0].at == 0);
     }
 
     /* Not a number: the line is not the shape this reads */

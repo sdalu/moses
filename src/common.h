@@ -19,6 +19,8 @@ struct mosquitto_message;
 
 struct gpio_v2_line_request;            // <linux/gpio.h>, only consumers need it
 
+#include "dbus_sink.h"                  // DBUS_SINK_START(), a no-op without WITH_DBUS
+
 /************************************************************************
  * Helpers                                                              *
  ************************************************************************/
@@ -70,27 +72,30 @@ struct gpio_v2_line_request;            // <linux/gpio.h>, only consumers need i
 #ifndef LOG
 #include <stdio.h>
 #include <errno.h>
+// __VA_OPT__ rather than the GNU `, ##__VA_ARGS__`: this is C23, where
+// it is standard, and clang under -Wpedantic -Werror refuses the
+// extension -- which PUT_DATA below already avoids the same way.
 #define LOG(x, ...) do {						\
 	int errno_saved = errno;					\
-	fprintf(stderr, x "\n", ##__VA_ARGS__);				\
+	fprintf(stderr, x "\n" __VA_OPT__(,) __VA_ARGS__);		\
 	errno = errno_saved;						\
     } while(0)
 #endif
 
 #ifndef LOG_ERRNO
 #define LOG_ERRNO(x, ...)						\
-	LOG(x " (%s)", ##__VA_ARGS__, strerror(errno))
+	LOG(x " (%s)", __VA_ARGS__ __VA_OPT__(,) strerror(errno))
 #endif
 
 #ifndef LOG_ERRMQTT
 #ifdef WITH_MQTT
 #define LOG_ERRMQTT(err, x, ...)					\
-    LOG(x " (%s)", ##__VA_ARGS__, mosquitto_strerror(err))
+    LOG(x " (%s)", __VA_ARGS__ __VA_OPT__(,) mosquitto_strerror(err))
 #else
 // mosquitto_strerror() is in the library that is not linked. Nothing
 // reaches this without MQTT, but the macro has to compile.
 #define LOG_ERRMQTT(err, x, ...)					\
-    LOG(x " (MQTT compiled out)", ##__VA_ARGS__)
+    LOG(x " (MQTT compiled out)" __VA_OPT__(,) __VA_ARGS__)
 #endif
 #endif
 
@@ -138,11 +143,11 @@ struct gpio_v2_line_request;            // <linux/gpio.h>, only consumers need i
  *     watermeter failure="read" 1790489588441449592
  *
  * Two sinks, chosen at compile time and independent of each other:
- * WITH_LINEPROTOCOL writes the line to stdout, WITH_DGRAM sends it to
- * the local datagram socket. One format for both, so a consumer on
+ * WITH_LINEPROTOCOL writes the line to stdout, WITH_DBUS puts it on the
+ * system bus (dbus_sink.h). One format for both, so a consumer on
  * either reads the same thing -- and it is a format other tools already
- * read, Telegraf's socket_listener among them, rather than something
- * private to this tree.
+ * read, Telegraf among them, rather than something private to this
+ * tree.
  *
  * The quotes around a failure are not decoration: a field value that is
  * not a number, a boolean or a quoted string is a parse error, and the
@@ -151,7 +156,7 @@ struct gpio_v2_line_request;            // <linux/gpio.h>, only consumers need i
  * With neither option the macros compile to nothing, which is why they
  * are macros at all; the work is in put_data() and put_fail().
  */
-#if defined(WITH_LINEPROTOCOL) || defined(WITH_DGRAM)
+#if defined(WITH_LINEPROTOCOL) || defined(WITH_DBUS)
 
 #ifndef PUT_LOCK
 #define PUT_LOCK()
@@ -188,7 +193,7 @@ void put_fail(const char *type, const char *failure);
  ************************************************************************/
 
 #define USAGE_DIE(x, ...) do {						\
-	fprintf(stderr, x "\n", ##__VA_ARGS__);				\
+	fprintf(stderr, x "\n" __VA_OPT__(,) __VA_ARGS__);		\
 	exit(1);							\
     } while(0)
 
@@ -291,14 +296,6 @@ int mqtt_connect(struct mqtt *mqtt,
 		 char *avail_topic, mqtt_message_cb on_message);
 
 void mqtt_config_from_env(struct mqtt *mqtt);
-
-#ifdef WITH_DGRAM
-// The socket the readings go to: $MOSES_DGRAM_PATH, or the compiled-in
-// DGRAM_PATH. The consumer binds it; producers only ever send. The
-// environment keeps the prefix and the build knob does not -- see
-// dgram_path() in common.c for why.
-const char *dgram_path(void);
-#endif
 
 // True when MQTT is configured (a host is set). When false the daemon runs
 // without publishing, so the topic plumbing and logging can be skipped.

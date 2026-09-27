@@ -128,14 +128,15 @@ struct breaker breaker =  {
  */
 
 /*
- * The setter handler exists only where MQTT does.
+ * The MQTT setter handler exists only where MQTT does.
  *
  * Without it there is no struct mosquitto_message to take apart --
- * common.h only forward-declares the type when the library is absent --
- * and nothing would ever call this anyway, MQTT being the only way a
- * state/set command arrives. Built without it, moses_breaker still does
- * the rest of its job: it holds the line, publishes its state to
- * whatever sinks there are, and fails the valve open when it stops.
+ * common.h only forward-declares the type when the library is absent.
+ * A command then arrives over the system bus, when WITH_DBUS puts the
+ * daemon there (on_set_state, below), or not at all: built with
+ * neither, moses_breaker still does the rest of its job -- it holds the
+ * line, reports its state to whatever sinks there are, and fails the
+ * valve open when it stops.
  *
  * With WITH_MQTT set, which is the deployed configuration, this file is
  * exactly what it was.
@@ -145,6 +146,11 @@ void on_message(struct mosquitto *mosq, void *obj, const struct mosquitto_messag
 #define BREAKER_ON_MESSAGE	on_message
 #else
 #define BREAKER_ON_MESSAGE	NULL
+#endif
+
+/* The bus's SetState, defined beside on_message() below. */
+#ifdef WITH_DBUS
+static int on_set_state(const char *state);
 #endif
 
 
@@ -398,7 +404,16 @@ main(int argc, char **argv)
     // Initialization
     if (breaker_init(&breaker) < 0)
 	DIE(2, "failed to initialize");
-    
+
+    // On the system bus, when built with it (src/dbus_sink.h), taking
+    // SetState there as well as on state/set. Never fatal, and before
+    // reduced_latency() so its thread is an ordinary one rather than
+    // SCHED_FIFO.
+#ifdef WITH_DBUS
+    dbus_sink_on_set_state(on_set_state);
+#endif
+    DBUS_SINK_START(NICKNAME);
+
     // Reducing latency
     if (breaker.reduced_latency)
 	reduced_latency();
@@ -482,4 +497,34 @@ on_message(struct mosquitto *mosq, void *obj,
     }
 }
 #endif	/* WITH_MQTT */
+
+
+#ifdef WITH_DBUS
+/*
+ * A SetState over the system bus (src/dbus_sink.h). Who may send one
+ * is the bus's policy -- dbus/moses.conf allows root and nobody else.
+ *
+ * The same parser, the same setter and the same failure reporting as
+ * the MQTT path, so a command means one thing whichever way it came.
+ * Runs on the sink's bus thread; breaker_set_state() takes the control
+ * mutex itself, as it does from mosquitto's thread.
+ */
+static int
+on_set_state(const char *state)
+{
+    int requested = breaker_parse_state(state, (int)strlen(state));
+    if (requested < 0)
+	return -1;
+
+    if (breaker_set_state(&breaker, requested, true) < 0) {
+	LOG("failed to set breaker state!");
+	PUT_FAIL(NICKNAME, "set-state");
+	static char *msg = MQTT_ERROR_MSG(NICKNAME, "critical",
+					  "failed to set breaker state");
+	MQTT_PUBLISH(&breaker.mqtt, error, 2, false, "%s", msg);
+	return -2;
+    }
+    return 0;
+}
+#endif	/* WITH_DBUS */
 

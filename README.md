@@ -579,7 +579,7 @@ mbus-serial-scan -b 2400 /dev/ttyAMA0
 A read-only front panel on the 0.96" 160x80 LCD the Automation HAT Mini
 carries (see [LCD](#lcd)). It subscribes to what the other daemons
 publish, asks `upsd` about the battery, optionally reads the same
-readings off a [local socket](#a-local-socket-beside-mqtt), and draws:
+readings off the [system bus](#the-system-bus-beside-mqtt), and draws:
 
 ~~~
 +--------------------------------------+
@@ -608,7 +608,7 @@ the display is whichever one someone opened a window on, which is not
 what the screen is about — the first SDL build sat on a workstation
 reporting `hyperion` above moses's water meter. The hostname becomes
 the right answer again only for a source that is local by construction,
-which is what the [local socket](#a-local-socket-beside-mqtt) is.
+which is what the [system bus](#the-system-bus-beside-mqtt) is.
 
 It is dark on purpose: the panel sits in a technical room where a white
 screen at full backlight is a lamp, black is the one thing an LCD
@@ -770,13 +770,12 @@ built, one option per program, and the last is for diagnosis.
 
 | CMake options       | Description                                                 |
 |---------------------|-------------------------------------------------------------|
-| `WITH_MQTT`         | Speak MQTT (**on** by default). Off compiles the MQTT half of `src/common.c` out and drops libmosquitto from the link entirely, for a machine that wants nothing but [line protocol](#line-protocol-output) on stdout. `moses_watermeter` and `moses_sensors` still do their job; `moses_breaker` is **not built** — `state/set` is the only way to command the valve, so without a broker it would open a GPIO and wait forever, which is worse than absent because it looks like a valve controller. `WITH_DISPLAY` is refused outright, being a subscriber and nothing else. |
+| `WITH_MQTT`         | Speak MQTT (**on** by default). Off compiles the MQTT half of `src/common.c` out and drops libmosquitto from the link entirely, for a machine that wants nothing but [line protocol](#line-protocol-output) on stdout. `moses_watermeter` and `moses_sensors` still do their job. `moses_breaker` is still built, and is then commanded over the [system bus](#the-system-bus-beside-mqtt) if `WITH_DBUS` is on; with neither it cannot be told to shut at all — it holds the line, reports its state, and fails the valve open when it stops. `WITH_DISPLAY` is refused outright, being a subscriber and nothing else. |
 | `WITH_LINEPROTOCOL` | Also write each reading to stdout as one line of [InfluxDB line protocol](https://docs.influxdata.com/influxdb/latest/reference/syntax/line-protocol/) — `<measurement> <fields> <nanosecond-timestamp>` — for piping into a time-series database. Telegraf, VictoriaMetrics and QuestDB read the same format |
-| `WITH_DGRAM`        | Also send each reading to a local unix datagram socket (`DGRAM_PATH`), in the same [line protocol](#line-protocol-output) written to stdout, **and** have `moses_display` read it. For a consumer on **this** machine, which would otherwise cross the network twice to reach a broker on another one — and be cut off entirely when that network is. Sending is non-blocking and silent about every error: nobody listening is the normal state, not a fault, and nothing may hold up a daemon counting pulses or holding a valve. |
-| `DGRAM_PATH`        | Where that socket is. Defaults to `/run/moses.sock` on Linux and `/var/run/moses.sock` elsewhere, because only one of those directories exists on each — `make` picks by looking. Keep it short: `sockaddr_un.sun_path` is 104 bytes on the BSDs and a path too long to fit is refused rather than truncated. |
+| `WITH_DBUS`         | Also put each reading on the [system bus](#the-system-bus-beside-mqtt), in the same [line protocol](#line-protocol-output) written to stdout, **and** have `moses_display` read it. For a consumer on **this** machine, which would otherwise cross the network twice to reach a broker on another one — and be cut off entirely when that network is. Each daemon owns a name on the bus while it runs and keeps the last line of each kind it emitted, so a consumer that starts late still gets them and learns at once when a daemon goes. Needs libdbus to build and `dbus/moses.conf` installed for the bus to allow it; sending queues and never blocks, and a bus that is missing is logged once and retried, so nothing may hold up a daemon counting pulses or holding a valve. |
 | `MQTT_TOPIC_PREFIX` | Change the default prefix applied to topic (`water-breaker`)|
 | `WITH_WATERMETER`   | Build `moses_watermeter` (**on** by default). The only program that wants M-Bus, so turning it off is what lets the tree configure where libmbus is not installed |
-| `WITH_BREAKER`      | Build `moses_breaker` (**on** by default). `state/set` is the only way to *command* the valve, so built without `WITH_MQTT` it cannot be told to shut — it still holds the line, reports its state to whatever sinks are on, and fails the valve open when it stops |
+| `WITH_BREAKER`      | Build `moses_breaker` (**on** by default). `state/set` over MQTT and `SetState` over the [system bus](#the-system-bus-beside-mqtt) are the only ways to *command* the valve, so built with neither `WITH_MQTT` nor `WITH_DBUS` it cannot be told to shut — it still holds the line, reports its state to whatever sinks are on, and fails the valve open when it stops |
 | `WITH_TEMPERATURE`  | Build `moses_sensors`, the BME280 reader (**on** by default) |
 | `WITH_DISPLAY`      | Build [`moses_display`](#moses_display), the LVGL front panel. Off by default; needs a C++ compiler (LVGL's build enables the language even though nothing here uses it) and pulls in the `3rd/lvgl` submodule, which is a long compile on a Pi Zero. The three daemons build with just a C compiler. |
 | `WITH_DISPLAY_TESTS`| Build the [screenshot tests](#tests). Needs LVGL but no panel, so it stands alone on a machine that cannot build `moses_display` at all. |
@@ -808,7 +807,7 @@ what it defaults to.
 |---------------------|---------------------|---------------------|----------|
 | `WITH_MQTT`         | yes                 | yes                 | yes      |
 | `WITH_LINEPROTOCOL` | yes                 | yes                 | no       |
-| `WITH_DGRAM`        | yes                 | yes                 | no       |
+| `WITH_DBUS`         | yes                 | yes                 | no       |
 | `WITH_WATERMETER`   | yes                 | yes                 | no       |
 | `WITH_BREAKER`      | yes                 | yes                 | no       |
 | `WITH_TEMPERATURE`  | yes                 | yes                 | no       |
@@ -830,14 +829,15 @@ mosquitto does still have to be there: the broker is what it reads.
 The three sinks go with the machine too, which is why they are in the
 table rather than left as plain build defaults. Where the daemons run —
 `device` and `sensors` — all three are on: the broker for everything off
-the box, the [local socket](#a-local-socket-beside-mqtt) for a panel
+the box, the [system bus](#the-system-bus-beside-mqtt) for a panel
 beside it, and stdout for whatever is collecting lines. They are not
 alternatives and cost nothing to have together: one formatter feeds each
-of them, and a socket nobody has bound is the normal state, not a fault.
-That is also why `sensors` keeps `WITH_DGRAM` on although it builds no
-display — a consumer can be attached later without a rebuild. The viewer
-produces no readings at all, so it has only the broker, which is where
-it reads them from.
+of them, and a bus nobody is listening on is the normal state, not a
+fault. That is also why `sensors` keeps `WITH_DBUS` on although it
+builds no display — a consumer can be attached later without a rebuild,
+and finds the last readings waiting for it. The viewer produces no
+readings at all, so it has only the broker, which is where it reads them
+from.
 
 A flavour only supplies *defaults*: any knob set on the command line
 still wins, so `make build FLAVOUR=viewer WITH_LOG=yes` is both. `make
@@ -862,10 +862,13 @@ ctest --test-dir build --output-on-failure
 | `breaker_state` | `breaker_parse_state()`, the valve command vocabulary — also what `moses_display` reads the `state` topic with, so the two cannot disagree |
 | `ups_estimate`  | `ups_on_battery()` and `ups_runtime()`: which `ups.status` flags mean on-battery, and the remaining-time division, including every way its inputs can fail to add up |
 | `payload`       | `src/display/payload.c`: what `moses_display` makes of a published payload — the index, the pulse count, the sensors JSON and an availability |
+| `lineproto`     | `src/display/lineproto.c`: what `moses_display` makes of a line off the bus — the wire exactly as the daemons emit it, its timestamp, and every malformed line that must yield nothing rather than half a figure |
+| `dbus`          | the bus itself, under `WITH_DBUS`: a daemon's sink and the display's source through a `dbus-daemon` that `dbus-run-session` starts for it — a consumer that starts late is filled in, a live line arrives, a producer that leaves is seen to leave, one that comes back is picked up, one never seen is never called gone, and `SetState` is applied on the breaker, refused with the right error otherwise |
 | `dashboard`     | the screen itself, rendered to PNG — see below           |
 
 All but `parsers` need neither mosquitto nor M-Bus nor anything
-Linux-only, so they run on a development machine too:
+Linux-only, so they run on a development machine too — `dbus` wanting
+only libdbus and `dbus-run-session`, which come with any desktop:
 
 ~~~sh
 cmake -B build-nohw -DWITH_TESTS=ON -DWITH_DISPLAY_TESTS=ON \
@@ -875,11 +878,11 @@ ctest --test-dir build-nohw --output-on-failure
 ~~~
 
 
-### A local socket, beside MQTT
+### The system bus, beside MQTT
 
-Built under [`WITH_DGRAM`](#build-options), which does two things: the
-daemons send every reading to a unix datagram socket as well as to the
-broker, and `moses_display` binds that socket and reads it.
+Built under [`WITH_DBUS`](#build-options), which does two things: each
+daemon puts every reading on the system D-Bus as well as on the broker,
+and `moses_display` reads it there.
 
 It exists because **the broker is not on this machine**. Without it, the
 index `moses_watermeter` reads travels over the network to another host
@@ -887,47 +890,113 @@ and back again to reach a panel ten centimetres away — and when that
 network is down the panel goes blank while every daemon behind it is
 working perfectly. That is precisely the moment somebody walks up to it.
 
+The bus is the one a Raspberry Pi OS already runs: `dbus-daemon
+--system` is there for the rest of the system, so nothing is added to
+the machine but one policy file. What each daemon puts on it:
+
+~~~
+bus name    moses.watermeter   moses.breaker   moses.sensors
+object      /moses/watermeter  /moses/breaker  /moses/sensors
+interface   moses.Readings
+  property  Lines  as   the last line of each kind the daemon emitted
+  signal    Line   s    every line, as it is emitted
+interface   moses.Actuator        on moses.breaker only
+  method    SetState (s state)    state/set, without the broker
+~~~
+
 What travels is the same [line protocol](#line-protocol-output) the
-stdout sink writes, one datagram per reading, without the trailing
+stdout sink writes, one message per reading, without the trailing
 newline. Not a second format invented for the occasion: `PUT_DATA` and
 `PUT_FAIL` are already at every reading, so they gained a sink rather
 than the daemons gaining a call, a line carries a real timestamp where
-an MQTT payload does not, and other things read it as it stands —
-Telegraf's `socket_listener` among them.
+an MQTT payload does not, and the standard tools show it as it stands:
 
-The consumer binds and the producers only ever send, so a daemon never
-waits on a display: sending is non-blocking, and `ENOENT` for no socket,
-`ECONNREFUSED` for one nobody has open and `EAGAIN` for a consumer not
-keeping up are all simply "nobody is listening", which is the ordinary
-state of the machine. `moses_display` refuses to start if the path is an
-existing non-socket file, or if another consumer is already bound to it
-— either would otherwise end with one of the two receiving nothing and
-neither saying so. The socket is created mode 0660, so a producer running
-as another user in a shared group can write to it and the world cannot.
+~~~sh
+busctl get-property moses.watermeter /moses/watermeter moses.Readings Lines
+busctl monitor moses.watermeter
+~~~
 
-**Two things it cannot carry**, which is why MQTT stays the primary path
-rather than being replaced:
+"Each kind" is a measurement and its first field — `watermeter index=`,
+`watermeter pulse=`, `environment temperature=`, `breaker state=` and a
+`failure=` for each — so a consumer that connects late gets the last
+index *and* the last pulse count, not merely whichever line came last.
 
-- *Retention.* MQTT's retained `index`, `state` and `availability` are
-  why the panel fills in within a moment of starting. A datagram socket
-  has no memory: a display started between reports shows dashes until the
-  next one, which can be a minute.
-- *The last will.* MQTT's LWT is how the display learns a daemon died
-  rather than merely went quiet. There is no such signal here, so the
-  availability marks are deliberately left untouched by this source — a
-  datagram proves a daemon was alive a moment ago, but nothing would ever
-  clear the mark again, and a panel claiming "online" about a process
-  that died an hour ago is worse than one that does not claim to know.
-  Staleness covers it instead: every figure carries when it arrived.
+**The daemon never waits on the bus.** Sending queues a message and
+returns; a bus that has stopped draining is noticed by the size of that
+queue and further signals are dropped rather than accumulated. A bus that
+is not there, or that refuses the name, is logged once and retried every
+few seconds from a thread of its own, and the readings emitted meanwhile
+are kept so that the first consumer still gets them. `dbus-daemon`
+restarting is a dropped connection and a reconnect, and never the
+`exit()` libdbus performs by default.
 
-The UPS is not on this wire at all. `nut-notify` publishes to MQTT and
+**Two things the socket this replaced could not carry**, and this can:
+
+- *Retention.* A display started between reports asks each daemon for
+  its `Lines` and is full within a round trip, rather than showing
+  dashes until the next report a minute later. Every line carries when
+  it was taken, and the model is stamped with that when it is plausible —
+  not in the future, not older than a day — so a reading read back this
+  way ages from when it was really taken. A line stamped in 1970 by a Pi
+  that had not yet set its clock is stamped on arrival instead.
+- *The last will.* Owning a name is being alive. The bus emits
+  `NameOwnerChanged` the moment an owner drops off it — exits, crashes,
+  is killed — which is a last will delivered in milliseconds rather than
+  after a keepalive lapses, and a daemon that comes back reclaims its
+  name and the same signal says so. Nothing on the display's side is
+  re-subscribed for it.
+
+What it will *not* do is claim a daemon is gone because its name was
+never seen: a daemon built without the bus, or whose name the policy
+refused, is alive and merely silent here. A name that is owned marks its
+daemon online, a name seen to lose its owner marks it offline, and a
+name with no owner at startup marks nothing — the availability topics
+on MQTT keep that say.
+
+**The valve can be commanded here too.** `SetState` on `moses.Actuator`
+takes exactly what `state/set` takes, goes through the same parser and
+the same setter in `moses_breaker`, and reports the result the same way
+— the new state as a line to every sink and a `critical` error if the
+relay would not move. It exists for the one moment the broker path
+fails, a network outage, which is when a local shut-off matters most:
+
+~~~sh
+busctl call moses.breaker /moses/breaker moses.Actuator SetState s 1
+~~~
+
+Only `moses.breaker` has the interface; the other two answer
+`UnknownMethod`. And only **root** may call it, which is the bus's
+policy rather than the daemon's opinion: a stray process on the machine
+gets `AccessDenied` from `dbus-daemon` before the call reaches anything.
+With this in place `moses_breaker` no longer needs MQTT to be
+commandable, so it builds and is useful with `WITH_MQTT` off and
+`WITH_DBUS` on.
+
+The bus's policy allows nobody to own a name, and nobody to call a
+method, until told. `dbus/moses.conf` lets root own `moses.*` and call
+`SetState`, lets anyone ask a daemon for its properties, and nothing
+else — `moses.Readings` has no methods, its one property is read-only,
+and `Set` is refused by the daemon regardless:
+
+~~~sh
+sudo install -m 0644 dbus/moses.conf /etc/dbus-1/system.d/
+~~~
+
+`dbus-daemon` notices the file on its own. Without it the daemons log
+`cannot own moses.watermeter` once and carry on without the bus, and the
+display finds nothing there.
+
+The UPS is not on this bus at all. `nut-notify` publishes to MQTT and
 `upsd` is asked directly, so the battery comes from one of those two
 however this is configured.
 
-Parsing is `src/display/lineproto.c`, kept apart from the socket and
-tested by `test/test_lineproto.c` — it decides what figure reaches the
-panel, which is worth being able to check without a socket, a daemon or
-a Raspberry Pi. `src/display/source-unix.c` is the socket.
+`src/dbus_sink.c` is the producing half and `src/display/source-dbus.c`
+the consuming one; `test/test_dbus.c` runs the two through a real
+`dbus-daemon` that `dbus-run-session` starts for it, and checks exactly
+the four things above. Parsing is `src/display/lineproto.c`, kept apart
+from the bus and tested by `test/test_lineproto.c` — it decides what
+figure reaches the panel, which is worth being able to check without a
+bus, a daemon or a Raspberry Pi.
 
 
 ### Screenshot tests
@@ -993,6 +1062,14 @@ them, for instance:
 ~~~sh
 sudo install -m 0755 bin/moses_watermeter bin/moses_breaker \
                      bin/moses_sensors    /usr/local/bin
+~~~
+
+With `WITH_DBUS`, the bus's policy file goes where `dbus-daemon` reads
+it, or the daemons cannot own their names (see [the system
+bus](#the-system-bus-beside-mqtt)):
+
+~~~sh
+sudo install -m 0644 dbus/moses.conf /etc/dbus-1/system.d/
 ~~~
 
 The helper scripts under `scripts/` (`loop-runner`, `nut-notify`) are

@@ -52,12 +52,30 @@ model_get(struct model *out)
 
 
 void
-model_set_valve(bool closed)
+model_set_valve_at(bool closed, time_t at)
 {
     pthread_mutex_lock(&model_mutex);
     model.valve.known  = true;
     model.valve.closed = closed;
-    model.valve.at     = model_now();
+    model.valve.at     = at;
+    pthread_mutex_unlock(&model_mutex);
+}
+
+
+void
+model_set_valve(bool closed)
+{
+    model_set_valve_at(closed, model_now());
+}
+
+
+void
+model_set_index_at(double litres, time_t at)
+{
+    pthread_mutex_lock(&model_mutex);
+    model.index.known  = true;
+    model.index.litres = litres;
+    model.index.at     = at;
     pthread_mutex_unlock(&model_mutex);
 }
 
@@ -65,11 +83,7 @@ model_set_valve(bool closed)
 void
 model_set_index(double litres)
 {
-    pthread_mutex_lock(&model_mutex);
-    model.index.known  = true;
-    model.index.litres = litres;
-    model.index.at     = model_now();
-    pthread_mutex_unlock(&model_mutex);
+    model_set_index_at(litres, model_now());
 }
 
 
@@ -84,12 +98,12 @@ model_set_index(double litres)
  * screen redrawn thirty times a second.
  */
 void
-model_set_pulse(unsigned long count)
+model_set_pulse_at(unsigned long count, time_t at)
 {
     pthread_mutex_lock(&model_mutex);
     model.pulse.known = true;
     model.pulse.count = count;
-    model.pulse.at    = model_now();
+    model.pulse.at    = at;
     if (count > 0)
 	model.pulse.latched_at = model.pulse.at;
     pthread_mutex_unlock(&model_mutex);
@@ -97,13 +111,27 @@ model_set_pulse(unsigned long count)
 
 
 void
-model_set_temperature(double celsius)
+model_set_pulse(unsigned long count)
+{
+    model_set_pulse_at(count, model_now());
+}
+
+
+void
+model_set_temperature_at(double celsius, time_t at)
 {
     pthread_mutex_lock(&model_mutex);
     model.temperature.known   = true;
     model.temperature.celsius = celsius;
-    model.temperature.at      = model_now();
+    model.temperature.at      = at;
     pthread_mutex_unlock(&model_mutex);
+}
+
+
+void
+model_set_temperature(double celsius)
+{
+    model_set_temperature_at(celsius, model_now());
 }
 
 

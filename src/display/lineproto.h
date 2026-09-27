@@ -2,15 +2,15 @@
  * moses_display -- reading the line protocol off the local socket
  *
  * The other daemons already emit every reading as one line of InfluxDB
- * line protocol (src/common.c, put_data()), and WITH_DGRAM sends that
- * same line to a unix datagram socket. This turns one such line back
- * into the readings the model keeps.
+ * line protocol (src/common.c, put_data()), and WITH_DBUS puts that
+ * same line on the system bus. This turns one such line back into the
+ * readings the model keeps.
  *
  * It is its own translation unit, and its own test
  * (test/test_lineproto.c), for the reason src/breaker_state.c and
  * src/display/payload.c are: it decides what number reaches the panel,
- * and that is worth being able to check without a socket, a daemon or a
- * Raspberry Pi. src/display/source-unix.c is then only the socket.
+ * and that is worth being able to check without a bus, a daemon or a
+ * Raspberry Pi. src/display/source-dbus.c is then only the bus.
  *
  * Nothing here includes mosquitto, LVGL, or anything Linux-only.
  *
@@ -32,11 +32,14 @@
  * files. LINEPROTO_* below are this side's, named so that a grep finds
  * both.
  *
- * The timestamp is parsed only far enough to be skipped. It says when
- * the reading was taken, which on a local socket is a moment ago, and
- * the model stamps what it stores with the time it arrived -- so using
- * it would buy nothing and would make a producer with a wrong clock
- * able to age a reading off the screen.
+ * The timestamp is read, to the second, and handed back as `at`. It
+ * says when the reading was taken, which matters once a line can be
+ * read back later than it was emitted: the bus keeps the last line of
+ * each kind for a display that starts between reports, and a value a
+ * minute old should age from a minute ago. Whether to trust it is the
+ * caller's decision, not this file's -- source-dbus.c takes it only
+ * when it is plausible, since a clock that was not set when the reading
+ * was taken would otherwise age a fresh reading off the screen.
  *
  * Not handled, because these producers never emit it: an escaped space
  * inside a measurement name, a space inside a quoted field value, and
@@ -49,6 +52,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <time.h>
 
 
 /** The measurement names, as the producers spell them. */
@@ -107,6 +111,10 @@ struct lineproto_reading {
 	double	      celsius;	/**< LINEPROTO_TEMPERATURE		*/
 	bool	      closed;	/**< LINEPROTO_VALVE: water shut	*/
     };
+
+    /** When the producer took it, in seconds since the epoch; 0 when
+     *  the line carried no timestamp, or one too large to be a time. */
+    time_t at;
 
     /** Which measurement it came from, always set. */
     char measurement[LINEPROTO_NAME_MAX];

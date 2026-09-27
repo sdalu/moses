@@ -146,6 +146,18 @@ void model_set_pulse(unsigned long count);
 void model_set_temperature(double celsius);
 void model_set_avail(enum model_producer who, bool online);
 
+/*
+ * The same, stamped with a time the caller vouches for. For a reading
+ * read back later than it was taken -- the bus keeps the last line of
+ * each kind for a display that starts between reports -- so that it
+ * ages from when it was really taken rather than from when it was
+ * found. CLOCK_REALTIME seconds, like `at` everywhere above.
+ */
+void model_set_valve_at(bool closed, time_t at);
+void model_set_index_at(double litres, time_t at);
+void model_set_pulse_at(unsigned long count, time_t at);
+void model_set_temperature_at(double celsius, time_t at);
+
 /**
  * Record a UPS reading. `charge` and `runtime` are negative when the
  * UPS does not report them; `estimated` says runtime was computed here

@@ -14,7 +14,9 @@
  */
 
 #include <ctype.h>
+#include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "breaker_state.h"
@@ -43,6 +45,27 @@ is_timestamp(const char *s)
 	    return false;
     }
     return true;
+}
+
+
+/*
+ * The timestamp, to the second.
+ *
+ * Nanoseconds since the epoch is nineteen digits this century, and
+ * strtoull() saturates rather than wraps, so a run of digits too long
+ * to be a time comes back as 0 -- "no usable timestamp" -- rather than
+ * as a date. The caller has already checked it is digits.
+ */
+static time_t
+timestamp_seconds(const char *s)
+{
+    if (strlen(s) > 20)
+	return 0;
+
+    unsigned long long ns = strtoull(s, NULL, 10);
+    if (ns == ULLONG_MAX)
+	return 0;
+    return (time_t)(ns / 1000000000ULL);
 }
 
 
@@ -165,11 +188,13 @@ lineproto_parse(const char *data, size_t len,
     if (*measurement == '\0')
 	return 0;
 
+    time_t at = 0;
     sp = strchr(fields, ' ');
     if (sp != NULL) {
 	*sp = '\0';
 	if (! is_timestamp(sp + 1))
 	    return 0;
+	at = timestamp_seconds(sp + 1);
     }
     if (*fields == '\0')
 	return 0;
@@ -190,6 +215,7 @@ lineproto_parse(const char *data, size_t len,
 
 	struct lineproto_reading r;
 	memset(&r, 0, sizeof(r));
+	r.at = at;
 	snprintf(r.measurement, sizeof(r.measurement), "%s", measurement);
 
 	enum lineproto_kind kind = field(measurement, tok, eq + 1, &r);

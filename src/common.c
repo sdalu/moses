@@ -25,10 +25,6 @@
 #include <time.h>
 #include <sched.h>
 #include <sys/mman.h>
-#ifdef WITH_DGRAM
-#include <sys/socket.h>
-#include <sys/un.h>
-#endif
 
 #ifdef WITH_MQTT
 #include <mosquitto.h>
@@ -180,74 +176,18 @@ reduced_latency(void)
  * Readings out                                                         *
  ************************************************************************/
 
-#if defined(WITH_LINEPROTOCOL) || defined(WITH_DGRAM)
+#if defined(WITH_LINEPROTOCOL) || defined(WITH_DBUS)
 
 /*
  * A reading leaves this program as one line of InfluxDB line protocol,
- * and goes to whichever sinks the build has: stdout, the local datagram
- * socket, or both. See common.h for the shape of the line.
+ * and goes to whichever sinks the build has: stdout, the system bus, or
+ * both. See common.h for the shape of the line, and src/dbus_sink.h for
+ * the bus -- a sink arranged so that it cannot hold a daemon up, because
+ * a valve controller must never wait on a display.
  *
  * One formatter, so the two sinks cannot drift into carrying slightly
  * different renderings of the same reading.
  */
-
-#ifdef WITH_DGRAM
-
-/*
- * The socket sink.
- *
- * Worth having because the broker is usually somewhere else: a reading
- * taken here otherwise crosses the network twice to reach a consumer
- * sitting beside it, and is gone entirely when that network is. This
- * has neither hop.
- *
- * Everything about it is arranged so that it cannot hold a daemon up.
- * SOCK_DGRAM, so there is no connection to establish or lose and a
- * consumer that restarts is picked up with nothing reopened.
- * Non-blocking, so a consumer that has stopped reading cannot stall a
- * send. And every error swallowed, because the ordinary state of this
- * machine is that nobody is listening at all -- ENOENT for no socket
- * file, ECONNREFUSED for one nobody has open, EAGAIN for a consumer not
- * keeping up. A valve controller must never wait on a display.
- */
-
-static int dgram_fd = -1;
-
-
-const char *
-dgram_path(void)
-{
-    /* The two names differ on purpose. DGRAM_PATH is the build's, and
-     * sits in the project's own namespace beside WITH_DGRAM and
-     * MQTT_TOPIC_PREFIX, none of which are prefixed. The environment is
-     * shared with every other program on the machine, so the variable
-     * there is MOSES_DGRAM_PATH, where the prefix earns its place. */
-    const char *path = getenv("MOSES_DGRAM_PATH");
-    return path ? path : DGRAM_PATH;
-}
-
-
-static void
-dgram_send(const char *line, size_t len)
-{
-    if (dgram_fd < 0) {
-	dgram_fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-	if (dgram_fd < 0)
-	    return;
-    }
-
-    struct sockaddr_un addr = { .sun_family = AF_UNIX };
-    const char *path = dgram_path();
-    if (strlen(path) >= sizeof(addr.sun_path))
-	return;				/* a path that cannot be used */
-    strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
-
-    (void)sendto(dgram_fd, line, len, 0,
-		 (const struct sockaddr *)&addr, sizeof(addr));
-}
-
-#endif	/* WITH_DGRAM */
-
 
 // Hand one finished line to every sink compiled in.
 static void
@@ -257,10 +197,10 @@ put_line(const char *line, size_t len)
     fwrite(line, 1, len, stdout);
     fflush(stdout);
 #endif
-#ifdef WITH_DGRAM
-    /* Without the trailing newline: a datagram carries its own length,
-     * and the line terminator is stdout's business. */
-    dgram_send(line, (len > 0) ? len - 1 : len);
+#ifdef WITH_DBUS
+    /* Without the trailing newline: a bus message carries its own
+     * length, and the line terminator is stdout's business. */
+    dbus_sink_put(line, (len > 0) ? len - 1 : len);
 #endif
 }
 
@@ -318,7 +258,7 @@ put_fail(const char *type, const char *failure)
     errno = errno_saved;
 }
 
-#endif	/* WITH_LINEPROTOCOL || WITH_DGRAM */
+#endif	/* WITH_LINEPROTOCOL || WITH_DBUS */
 
 
 /************************************************************************
@@ -338,10 +278,6 @@ put_fail(const char *type, const char *failure)
  * before stops working, and the order is that way round because the
  * specific should beat the general -- someone who sets the prefixed name
  * meant it for moses in particular.
- *
- * DGRAM_PATH has no such pair. Its variable is MOSES_DGRAM_PATH and
- * nothing else in the world defines it, so there is no general name for
- * it to fall back to (see dgram_path()).
  */
 static char *
 env_moses(const char *name)

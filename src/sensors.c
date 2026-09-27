@@ -351,9 +351,14 @@ int main(int argc, char *argv[]) {
     sensors_parse_config(argc, argv, &sensors);
     
     // Initialization
-    if (sensors_init() < 0) 
+    if (sensors_init() < 0)
 	DIE(2, "Failed to initialized");
-    
+
+    // On the system bus, when built with it (src/dbus_sink.h). Never
+    // fatal, and before reduced_latency() so its thread is an ordinary
+    // one rather than SCHED_FIFO.
+    DBUS_SINK_START("sensors");
+
     // Reducing latency
     if (sensors.reduced_latency)
 	reduced_latency();

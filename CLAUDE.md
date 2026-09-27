@@ -53,14 +53,23 @@
 
       make tests-nohw
 
-  That is 4 of the 5 tests, and `dashboard` is the only way to see what
-  the screen looks like without standing in front of the machine -- it
-  found two overflow bugs that the running program would not have
-  reported.
+  That is 6 of the 7 tests -- `payload`, `lineproto` and `dbus` build
+  the same way -- and `dashboard` is the only way to see what the
+  screen looks like without standing in front of the machine: it found
+  two overflow bugs that the running program would not have reported.
+  `dbus` needs libdbus and `dbus-run-session` (add `-DWITH_DBUS=ON`;
+  it is skipped, not failed, without them) and is the one test of the
+  path between the daemons and the display: a daemon's sink and the
+  display's source through a real `dbus-daemon`.
   `test_parsers` is the one that stays out: it links `moses_common`,
-  which needs mosquitto and `<linux/gpio.h>`. Use that trio as the
+  which needs mosquitto and `<linux/gpio.h>`. Use those six as the
   off-Linux gate, call the rest unverified, and say so; CLAUDE.local.md
   names the Linux host to get the real proof from.
+- **`WITH_DBUS` needs `libdbus-1-dev` on the Pi** and `dbus/moses.conf`
+  in `/etc/dbus-1/system.d/` for the daemons to own their names. The
+  gate builds without the policy file -- `test_dbus` runs on a private
+  session bus -- but a deployed daemon without it logs `cannot own` once
+  and carries on with the bus silent.
 - **`moses_display` is off by default and expensive.** `-DWITH_DISPLAY=ON`
   adds the LVGL front panel, which compiles the whole `3rd/lvgl`
   submodule: some seven hours on the Pi Zero, so start it detached and

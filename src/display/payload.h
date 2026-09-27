@@ -8,10 +8,10 @@
  *
  * Everything takes a pointer and a length rather than a string, because
  * that is what arrives: mosquitto hands over a buffer that is not
- * NUL-terminated, and a unix datagram would do the same. Nothing here
- * includes mosquitto, LVGL, or a header that is Linux-only, which is
- * what lets src/display/source-unix.c, which reads the local datagram
- * socket, reuse them unchanged.
+ * NUL-terminated, and a line off the bus is handed over the same way.
+ * Nothing here includes mosquitto, LVGL, or a header that is Linux-only,
+ * which is what lets src/display/lineproto.c, which reads the lines the
+ * system bus carries, reuse them unchanged.
  *
  * All of them refuse rather than guess. A payload that is not exactly
  * what was expected returns false and leaves its output alone, because

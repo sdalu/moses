@@ -20,14 +20,15 @@
  *                source takes the UPS on itself, from nut-notify's
  *                events.
  *
- *   source-unix  the same readings as source-mqtt, off a local unix
- *                datagram socket, without a broker in between -- built
- *                only under WITH_DGRAM, since that is what makes the
- *                daemons send them. Pushed, from a thread blocked in
- *                recv(). It carries no retained state and no last will,
- *                so it is a shortcut that survives the network being
- *                gone rather than a replacement for MQTT; see
- *                source-unix.c for what that costs.
+ *   source-dbus  the same readings as source-mqtt, off the system bus,
+ *                without a broker in between -- built only under
+ *                WITH_DBUS, since that is what puts the daemons on the
+ *                bus. Pushed, from a thread blocked in the bus, and
+ *                fetched once at startup: each daemon keeps the last
+ *                line of each kind it emitted, and the bus says when a
+ *                daemon's name is taken or dropped. So it has the
+ *                retention and the liveness MQTT has, without the
+ *                network; see source-dbus.c for what it will not claim.
  *
  * All three write the model and nothing else, which is what lets them be
  * three files rather than three special cases inside main().
@@ -91,29 +92,27 @@ void source_nut_probe(const char *ups);
 const char *source_nut_name(void);
 
 
-#ifdef WITH_DGRAM
+#ifdef WITH_DBUS
 /**
- * Bind the local datagram socket and read it, on its own thread.
+ * Reach the system bus and watch the daemons on it, on its own thread.
  *
- * The path is dgram_path() -- $MOSES_DGRAM_PATH, or the compiled-in
- * DGRAM_PATH. This is the end that binds; the daemons only ever send.
+ * Asks each daemon that is there for the last line of each kind it
+ * emitted, then takes every line as it is emitted, and marks a daemon
+ * online when its name is owned and offline when its name is seen to
+ * be dropped. A name never seen is left alone.
  *
- * Refuses rather than takes the address when the path is an existing
- * non-socket file, or when another consumer is already bound to it: both
- * would otherwise end with one of the two receiving nothing and neither
- * of them saying so.
+ * The bus is DBUS_BUS_SYSTEM, which libdbus locates itself; setting
+ * DBUS_SYSTEM_BUS_ADDRESS in the environment points it elsewhere, which
+ * is how test/test_dbus.c runs this against a private bus.
  *
- * @return < 0 if the socket could not be bound or the thread not started
+ * @return < 0 if the bus could not be reached or the thread not started
  */
-int source_unix_start(void);
+int source_dbus_start(void);
 
 /**
- * Remove the socket file and stop reading.
- *
- * Called on the way out, so the next run does not find a stale socket
- * and have to work out whether anything is still using it.
+ * Leave the bus and stop reading. Called on the way out.
  */
-void source_unix_stop(void);
+void source_dbus_stop(void);
 #endif
 
 #endif
