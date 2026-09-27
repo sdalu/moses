@@ -55,9 +55,11 @@ is sometimes that the checker is wrong rather than the file.
 Re-read each against what this round changed: a document that was true
 this morning is a claim, not a fact.
 
-- [ ] `README.md` -- does every flag, path, topic and command it names
-      still exist, and does a reader following its recipes get the tests
-      it says they get?
+- [ ] `README.md`, `docs/*.md`, `test/README.md` -- does every flag,
+      path, topic and command they name still exist, and does a reader
+      following their recipes get the tests they say they get? A
+      section that moves between them takes its citations with it:
+      the code comments cite them as `docs/hardware.md, *LCD*`.
 - [ ] `DESIGN.md` -- did this round decide something, or invalidate a
       reason written there? A decision worked out through iteration is
       recorded in the same unit of work or not at all.

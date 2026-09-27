@@ -433,7 +433,7 @@ show_ups(const struct model *m)
 
     case MODEL_UPS_ABSENT:
 	/* Looked and found nothing. On most machines that is not a
-	 * fault -- but moses is battery-backed on purpose (README,
+	 * fault -- but moses is battery-backed on purpose (docs/hardware.md,
 	 * *Shopping list*), so it is shown rather than hidden, dimmed
 	 * rather than red. */
 	set(&w.ups_label, INK_DIM, "UPS");

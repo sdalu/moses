@@ -2,7 +2,8 @@ Design notes
 ============
 
 Why moses has the shape it has. What the programs do, how to build them
-and what they put on the wire is in [README.md](README.md).
+and what they put on the wire is in [README.md](README.md) and the
+documents under [docs/](docs/).
 
 
 Three sinks, and none of them a choice
@@ -32,8 +33,9 @@ The bus is beside the broker, not instead of it
 The broker is not on this machine, so a panel ten centimetres from the
 meter would otherwise read it over the network twice, and go blank while
 every daemon behind it was working. The bus is the local path for local
-consumers; MQTT remains the path for everything off the box. README,
-*The system bus, beside MQTT*, has what each daemon puts there and why
+consumers; MQTT remains the path for everything off the box.
+[docs/interfaces.md](docs/interfaces.md), *The system bus, beside
+MQTT*, has what each daemon puts there and why
 retention and the last will are what the replaced socket could not carry.
 
 `moses_display` is a subscriber and nothing else, which is why
@@ -183,7 +185,7 @@ The tests are off by default (`WITH_TESTS`), so a normal build does not
 compile them, and the suite is not one number: `dbus` needs `WITH_DBUS`
 and `dashboard` needs `WITH_DISPLAY_TESTS`, so the `make` targets exist
 partly to stop a hand-written `cmake` line from quietly registering fewer
-tests than the reader thinks. See README, *Tests*.
+tests than the reader thinks. See [test/README.md](test/README.md).
 
 
 The screenshot test owns nothing but LVGL
@@ -203,8 +205,9 @@ the renderer checked against itself; so
 writing the references is a separate deliberate target.
 
 What it cannot see is the backend's flush path -- byte order, the ST7735
-RAM offset, the rotation -- and that gap is not hypothetical. README,
-*Screenshot tests*, has the failure it missed.
+RAM offset, the rotation -- and that gap is not hypothetical.
+[test/README.md](test/README.md), *Screenshot tests*, has the failure
+it missed.
 
 
 Nothing here is versioned

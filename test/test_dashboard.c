@@ -64,7 +64,7 @@ unsigned lodepng_encode32_file(const char *filename,
 			       unsigned w, unsigned h);
 
 
-/* The panel: 160x80 landscape (README, *LCD*). */
+/* The panel: 160x80 landscape (docs/hardware.md, *LCD*). */
 #define PANEL_W		160
 #define PANEL_H		80
 

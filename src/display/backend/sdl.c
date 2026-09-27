@@ -28,8 +28,8 @@
 #include "internal.h"
 
 
-/* The panel this stands in for (README, *LCD*), after rotation -- the
- * numbers the dashboard is designed against. */
+/* The panel this stands in for (docs/hardware.md, *LCD*), after
+ * rotation -- the numbers the dashboard is designed against. */
 #define SDL_H_RES	160
 #define SDL_V_RES	80
 

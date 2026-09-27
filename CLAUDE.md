@@ -5,8 +5,13 @@ Raspberry Pi, and an LVGL front panel that shows them.
 
 ## Where things are
 
-- `README.md` — the hardware, what the programs do, how to build them,
-  the MQTT and D-Bus interfaces, the tests
+- `README.md` — what moses is, the architecture, a quick start, and a
+  map of the rest
+- `docs/` — `hardware.md` (parts, wiring, `/boot`), `system.md` (the
+  Pi's own set-up), `building.md` (prerequisites, options, flavours),
+  `programs.md` (options, environment), `interfaces.md` (MQTT, line
+  protocol, D-Bus)
+- `test/README.md` — what each test covers, and which target runs it
 - `DESIGN.md` — why it is shaped this way
 - `CHECKLIST.md` — what has to be true before a round here is done
 - `CMakeLists.txt` — the authority on every build option either names
@@ -31,17 +36,17 @@ including when the display owes a build of its own.
   forgotten `-D` does not fail — the test is never built and `ctest`
   reports green on one test fewer. CMake accepts an unknown `-D` in
   silence too, which is how CI spent its life passing `-DWITH_PUT=1` and
-  never compiling the stdout sink. Use the `make` targets; README,
-  *Tests*, prints what each expands to.
+  never compiling the stdout sink. Use the `make` targets;
+  `test/README.md` prints what each expands to.
 - **`parsers` is the one test that needs Linux**, because it links
   `moses_gpio` and those parsers speak in GPIO line flags. Everything
   else builds anywhere, so off Linux run the six, call the daemons
   unverified, and say so.
 - **libmbus and Linux are independent preconditions.** Satisfying
   libmbus gets a successful `cmake` and not a successful `make`. For the
-  daemons, build libmbus first (README, *libmbus*; `CMakeLists.txt` hints
-  at `/opt/libmbus`) or point `MBUS_INCLUDE_DIR` and `MBUS_LIBRARY` at
-  wherever it landed.
+  daemons, build libmbus first (`docs/building.md`, *libmbus*;
+  `CMakeLists.txt` hints at `/opt/libmbus`) or point `MBUS_INCLUDE_DIR`
+  and `MBUS_LIBRARY` at wherever it landed.
 - **`WITH_DISPLAY` compiles the whole of `3rd/lvgl`** — some seven hours
   on a Pi Zero, and it needs a C++ compiler (LVGL's build enables the
   language although nothing here uses it). It is off by default and

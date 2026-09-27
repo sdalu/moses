@@ -39,9 +39,9 @@
 /**
  * A daemon whose liveness is tracked, one per availability topic.
  *
- * Availability is per-daemon and retained (see README, MQTT topics), so
- * these are known within a moment of connecting rather than after the
- * first reading arrives.
+ * Availability is per-daemon and retained (see docs/interfaces.md,
+ * MQTT topics), so these are known within a moment of connecting
+ * rather than after the first reading arrives.
  */
 enum model_producer {
     MODEL_WATERMETER = 0,

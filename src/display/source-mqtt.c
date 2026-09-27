@@ -5,20 +5,21 @@
  * message into the model. Nothing is published from here: the display
  * watches, it does not take part.
  *
- * Topics are the ones README, *MQTT topics*, documents, relative to
- * MQTT_TOPIC_PREFIX like everywhere else -- which is already what tells
- * one installation from another on a shared broker. `index` and `state` are
- * retained by their producers, and so is each `availability/<daemon>`
- * last will, so most of the screen is filled within a moment of
- * connecting rather than after the first interval elapses. `pulse` and
- * `sensors` are not retained and arrive on their producer's interval.
+ * Topics are the ones docs/interfaces.md, *MQTT topics*, documents,
+ * relative to MQTT_TOPIC_PREFIX like everywhere else -- which is
+ * already what tells one installation from another on a shared broker.
+ * `index` and `state` are retained by their producers, and so is each
+ * `availability/<daemon>` last will, so most of the screen is filled
+ * within a moment of connecting rather than after the first interval
+ * elapses. `pulse` and `sensors` are not retained and arrive on their
+ * producer's interval.
  *
  * The UPS is the exception: nut-notify publishes outside the prefix
- * (README, *nut*), and what is subscribed to there is its retained
- * `ups/<ups>/state` rather than the per-type notification topics.
- * upsmon speaks only on a change, so the retained state is the only
- * thing a display that has just started can read. Whether it is the
- * whole of what this knows about the UPS depends on --ups; see
+ * (docs/system.md, *Nut*), and what is subscribed to there is its
+ * retained `ups/<ups>/state` rather than the per-type notification
+ * topics. upsmon speaks only on a change, so the retained state is the
+ * only thing a display that has just started can read. Whether it is
+ * the whole of what this knows about the UPS depends on --ups; see
  * notify_owns_ups below.
  */
 
@@ -109,12 +110,12 @@ has_payload(const struct mosquitto_message *msg)
 /*
  * A breaker state payload.
  *
- * moses_breaker echoes 0 or 1 on `state` (README, *MQTT topics*), but
- * this is breaker_parse_state() -- the very parser moses_breaker reads
- * its `state/set` commands with -- rather than a second one written
- * here. One vocabulary, so the display cannot disagree with the valve
- * about what a payload meant, and it arrives already covered by
- * test/test_breaker_state.c.
+ * moses_breaker echoes 0 or 1 on `state` (docs/interfaces.md,
+ * *MQTT topics*), but this is breaker_parse_state() -- the very parser
+ * moses_breaker reads its `state/set` commands with -- rather than a
+ * second one written here. One vocabulary, so the display cannot
+ * disagree with the valve about what a payload meant, and it arrives
+ * already covered by test/test_breaker_state.c.
  */
 static bool
 payload_bool(const struct mosquitto_message *msg, bool *val)
@@ -248,11 +249,12 @@ source_mqtt_start(struct mqtt *handler, const char *ups,
     }
 
     /* The UPS state. nut-notify ignores MQTT_TOPIC_PREFIX, so this one
-     * is absolute (README, *nut*), and it is retained -- which is the
-     * whole point of subscribing to it rather than to the per-type
-     * notification topics. upsmon speaks only when something changes,
-     * so on a machine that has been on mains for a year there is no
-     * event to catch; the retained state is there to be read at once.
+     * is absolute (docs/system.md, *Nut*), and it is retained -- which
+     * is the whole point of subscribing to it rather than to the
+     * per-type notification topics. upsmon speaks only when something
+     * changes, so on a machine that has been on mains for a year there
+     * is no event to catch; the retained state is there to be read at
+     * once.
      *
      * With a UPS known -- named on the command line or found by asking
      * upsd -- only that one is watched, so a second UPS on the same

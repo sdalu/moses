@@ -91,11 +91,11 @@ model_set_index(double litres)
  * A pulse report.
  *
  * The watermeter publishes the count seen since its last report, and a
- * 0 as a heartbeat when --idle-timeout passes with nothing (README,
- * MQTT topics). So a report is not itself news; a non-zero one is, and
- * its time is kept separately as the latch the dashboard holds the flow
- * marker on. Without that the marker would be a one-frame flicker on a
- * screen redrawn thirty times a second.
+ * 0 as a heartbeat when --idle-timeout passes with nothing
+ * (docs/interfaces.md, MQTT topics). So a report is not itself news; a
+ * non-zero one is, and its time is kept separately as the latch the
+ * dashboard holds the flow marker on. Without that the marker would be
+ * a one-frame flicker on a screen redrawn thirty times a second.
  */
 void
 model_set_pulse_at(unsigned long count, time_t at)

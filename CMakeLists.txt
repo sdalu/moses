@@ -241,7 +241,8 @@ if (NEED_MOSQUITTO)
     find_library(MOSQUITTO_LIBRARY     NAMES mosquitto   REQUIRED)
 endif()
 
-# M-Bus -- used by moses_watermeter only (usually not packaged, see README)
+# M-Bus -- used by moses_watermeter only (usually not packaged, see
+# docs/building.md, *libmbus*)
 if (NEED_MBUS)
     find_path(   MBUS_INCLUDE_DIR NAMES mbus/mbus.h REQUIRED HINTS /opt/libmbus/include)
     find_library(MBUS_LIBRARY     NAMES mbus        REQUIRED HINTS /opt/libmbus/lib)
@@ -503,7 +504,7 @@ endif()
 
 # Both off by default: LVGL is a large submodule and a long compile
 # (hours on the Pi Zero), and the three daemons do not need it. The
-# panel is the Automation HAT Mini's ST7735 (README, *LCD*).
+# panel is the Automation HAT Mini's ST7735 (docs/hardware.md, *LCD*).
 #
 # WITH_DISPLAY_TESTS builds the screenshot tests, which need LVGL but
 # not the panel -- so it stands alone on a machine that cannot build

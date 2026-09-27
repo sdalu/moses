@@ -9,8 +9,8 @@
  *
  * It publishes nothing and commands nothing. The relay on that same HAT
  * is the solenoid valve and belongs to moses_breaker; this program
- * takes only the panel's three pins (README, *LCD*) and never goes near
- * it.
+ * takes only the panel's three pins (docs/hardware.md, *LCD*) and
+ * never goes near it.
  *
  * Three threads. This one owns LVGL and does nothing else; mosquitto's
  * network thread and the upsd poller only ever write the model

@@ -5,12 +5,13 @@
  * interval, from a thread of its own.
  *
  * It is read directly rather than through MQTT because there is nothing
- * on MQTT to read: nut-notify (README, *nut*) forwards four events --
- * ONLINE, ONBATT, LOWBATT, SHUTDOWN -- when upsmon fires them, and
- * publishes no state, no charge and no time. The display wants a figure
- * on the screen at all times, which only upsd has. The events are still
- * worth having, and source-mqtt.c subscribes to them, so that going
- * onto battery repaints at once instead of up to one interval later.
+ * on MQTT to read: nut-notify (docs/system.md, *Nut*) forwards four
+ * events -- ONLINE, ONBATT, LOWBATT, SHUTDOWN -- when upsmon fires
+ * them, and publishes no state, no charge and no time. The display
+ * wants a figure on the screen at all times, which only upsd has. The
+ * events are still worth having, and source-mqtt.c subscribes to them,
+ * so that going onto battery repaints at once instead of up to one
+ * interval later.
  *
  * Asking is one LIST VAR rather than a GET VAR per variable: it is one
  * round trip, and the reply names each variable, so nothing depends on
