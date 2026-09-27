@@ -76,19 +76,21 @@ ON_no		= OFF
 # becomes, and BSD make leaves the tabs in. That is invisible where the
 # value is only passed to cmake, and visible the moment `features`
 # prints it for someone to eval.
-CMAKEFLAGS	 = -DWITH_LOG=$(ON_$(WITH_LOG))
+# Grouped as the help groups them: where a reading goes, what gets
+# built, diagnostics.
+CMAKEFLAGS	 = -DWITH_MQTT=$(ON_$(WITH_MQTT))
 CMAKEFLAGS	+= -DWITH_LINEPROTOCOL=$(ON_$(WITH_LINEPROTOCOL))
-CMAKEFLAGS	+= -DWITH_TESTS=$(ON_$(WITH_TESTS))
-CMAKEFLAGS	+= -DWITH_DAEMONS=$(ON_$(WITH_DAEMONS))
-CMAKEFLAGS	+= -DWITH_MQTT=$(ON_$(WITH_MQTT))
 CMAKEFLAGS	+= -DWITH_DGRAM=$(ON_$(WITH_DGRAM))
+CMAKEFLAGS	+= -DMQTT_TOPIC_PREFIX=$(MQTT_TOPIC_PREFIX)
 CMAKEFLAGS	+= -DMOSES_DGRAM_PATH=$(MOSES_DGRAM_PATH)
+CMAKEFLAGS	+= -DWITH_DAEMONS=$(ON_$(WITH_DAEMONS))
 CMAKEFLAGS	+= -DWITH_DISPLAY=$(ON_$(WITH_DISPLAY))
 CMAKEFLAGS	+= -DWITH_DISPLAY_TESTS=$(ON_$(WITH_DISPLAY_TESTS))
+CMAKEFLAGS	+= -DWITH_TESTS=$(ON_$(WITH_TESTS))
+CMAKEFLAGS	+= -DDISPLAY_BACKEND=$(DISPLAY_BACKEND)
+CMAKEFLAGS	+= -DWITH_LOG=$(ON_$(WITH_LOG))
 CMAKEFLAGS	+= -DWITH_WERROR=$(ON_$(WITH_WERROR))
 CMAKEFLAGS	+= -DWITH_ANALYZER=$(ON_$(WITH_ANALYZER))
-CMAKEFLAGS	+= -DDISPLAY_BACKEND=$(DISPLAY_BACKEND)
-CMAKEFLAGS	+= -DMQTT_TOPIC_PREFIX=$(MQTT_TOPIC_PREFIX)
 
 HELPERS		= loop-runner nut-notify
 
@@ -139,16 +141,22 @@ help:						## show this help (the default)
 	    DISPLAY_BACKEND	'$(DISPLAY_BACKEND)  (one of: automation-hat-mini sdl)' \
 	    MQTT_TOPIC_PREFIX	'$(MQTT_TOPIC_PREFIX)  (compiled-in default topic prefix)'
 	@echo ''
-	@echo 'Build options (yes/no; see `make options`):'
-	@printf '  %-16s %s\n'						      \
+	@echo 'Where a reading goes (yes/no, and none of them exclusive):'
+	@printf '  %-18s %s\n'						      \
+	    WITH_MQTT		'$(WITH_MQTT)  (the broker; no also drops moses_breaker)' \
+	    WITH_LINEPROTOCOL	'$(WITH_LINEPROTOCOL)  (stdout, as InfluxDB line protocol)' \
+	    WITH_DGRAM		'$(WITH_DGRAM)  (the same line to $(MOSES_DGRAM_PATH))'
+	@echo ''
+	@echo 'What gets built (yes/no; see `make options`):'
+	@printf '  %-18s %s\n'						      \
 	    WITH_DAEMONS	'$(WITH_DAEMONS)  (the three daemons; needs M-Bus)' \
-	    WITH_MQTT		'$(WITH_MQTT)  (no drops libmosquitto, and moses_breaker with it)' \
-	    WITH_DGRAM		'$(WITH_DGRAM)  (readings to $(MOSES_DGRAM_PATH) as well)' \
 	    WITH_DISPLAY	'$(WITH_DISPLAY)  (moses_display; pulls in LVGL, a long compile)' \
 	    WITH_DISPLAY_TESTS	'$(WITH_DISPLAY_TESTS)  (the screenshot tests; needs LVGL, not a panel)' \
+	    WITH_TESTS		'$(WITH_TESTS)  (build the unit tests; `make tests` sets it)'
+	@echo ''
+	@echo 'Diagnostics:'
+	@printf '  %-18s %s\n'						      \
 	    WITH_LOG		'$(WITH_LOG)  (log messages on stderr)'	      \
-	    WITH_LINEPROTOCOL	'$(WITH_LINEPROTOCOL)  (readings to stdout as InfluxDB line protocol)' \
-	    WITH_TESTS		'$(WITH_TESTS)  (build the unit tests; `make tests` sets it)' \
 	    WITH_WERROR		'$(WITH_WERROR)  (warnings are errors, for CI)' \
 	    WITH_ANALYZER	'$(WITH_ANALYZER)  (run the GCC static analyzer)'
 	@echo ''
@@ -266,19 +274,27 @@ options:					## every build knob, and what it defaults to
 	@echo 'Build options, as CMakeLists.txt defines them.'
 	@echo 'Set any of them on the command line: make tests WITH_WERROR=yes'
 	@echo ''
-	@printf '  %-20s %-8s %s\n'					\
+	@echo 'Where a reading goes -- three sinks, none of them exclusive:'
+	@printf '  %-20s %-21s %s\n'					\
+	    'WITH_MQTT'		 'yes'	'publish to the broker'		\
+	    'WITH_LINEPROTOCOL'	 'no'	'one line per reading on stdout' \
+	    'WITH_DGRAM'	 'no'	'the same line to a unix datagram socket' \
+	    'MQTT_TOPIC_PREFIX'	 'water-breaker'	'compiled-in topic prefix' \
+	    'MOSES_DGRAM_PATH'	 '/run/moses.sock' 'the socket it goes to'
+	@echo ''
+	@echo 'What gets built:'
+	@printf '  %-20s %-21s %s\n'					\
 	    'WITH_DAEMONS'	 'yes'	'the three daemons'		\
-	    'WITH_MQTT'		 'yes'	'speak MQTT; no drops libmosquitto' \
-	    'WITH_DGRAM'	 'no'	'readings to a local datagram socket too' \
 	    'WITH_DISPLAY'	 'no'	'moses_display, the LVGL front panel' \
 	    'WITH_DISPLAY_TESTS' 'no'	'the screenshot tests'		\
-	    'WITH_LOG'		 'no'	'log messages on stderr'	\
-	    'WITH_LINEPROTOCOL'	 'no'	'readings as InfluxDB line protocol' \
 	    'WITH_TESTS'	 'no'	'build the unit tests'		\
+	    'DISPLAY_BACKEND'	 'automation-hat-mini' 'or sdl, for a window'
+	@echo ''
+	@echo 'Diagnostics:'
+	@printf '  %-20s %-21s %s\n'					\
+	    'WITH_LOG'		 'no'	'log messages on stderr'	\
 	    'WITH_WERROR'	 'no'	'treat warnings as errors'	\
-	    'WITH_ANALYZER'	 'no'	'run the GCC static analyzer'	\
-	    'DISPLAY_BACKEND'	 'automation-hat-mini' 'or sdl, for a window' \
-	    'MQTT_TOPIC_PREFIX'	 'water-breaker' 'compiled-in topic prefix'
+	    'WITH_ANALYZER'	 'no'	'run the GCC static analyzer'
 
 features:					## what this invocation selected, as shell variables
 	@echo '# FLAVOUR=$(FLAVOUR) WITH_LOG=$(WITH_LOG) WITH_LINEPROTOCOL=$(WITH_LINEPROTOCOL) WITH_TESTS=$(WITH_TESTS) WITH_DAEMONS=$(WITH_DAEMONS) WITH_MQTT=$(WITH_MQTT) WITH_DGRAM=$(WITH_DGRAM) WITH_DISPLAY=$(WITH_DISPLAY) DISPLAY_BACKEND=$(DISPLAY_BACKEND)'

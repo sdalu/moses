@@ -762,17 +762,21 @@ cmake -B build -DWITH_LOG=1 -DWITH_LINEPROTOCOL=1 -DMQTT_TOPIC_PREFIX=water-brea
 make  -C build
 ~~~
 
+The first three say **where a reading goes** and are independent of each
+other — a build may have all three, one, or none. The next four say what
+gets built, and the last is for diagnosis.
+
 | CMake options       | Description                                                 |
 |---------------------|-------------------------------------------------------------|
-| `WITH_LOG`          | Enable log messages on stderr                               |
+| `WITH_MQTT`         | Speak MQTT (**on** by default). Off compiles the MQTT half of `src/common.c` out and drops libmosquitto from the link entirely, for a machine that wants nothing but [line protocol](#line-protocol-output) on stdout. `moses_watermeter` and `moses_sensors` still do their job; `moses_breaker` is **not built** — `state/set` is the only way to command the valve, so without a broker it would open a GPIO and wait forever, which is worse than absent because it looks like a valve controller. `WITH_DISPLAY` is refused outright, being a subscriber and nothing else. |
 | `WITH_LINEPROTOCOL` | Also write each reading to stdout as one line of [InfluxDB line protocol](https://docs.influxdata.com/influxdb/latest/reference/syntax/line-protocol/) — `<measurement> <fields> <nanosecond-timestamp>` — for piping into a time-series database. Telegraf, VictoriaMetrics and QuestDB read the same format |
+| `WITH_DGRAM`        | Also send each reading to a local unix datagram socket (`MOSES_DGRAM_PATH`, default `/run/moses.sock`), in the same [line protocol](#line-protocol-output) written to stdout. For a consumer on **this** machine, which would otherwise cross the network twice to reach a broker on another one — and be cut off entirely when that network is. Non-blocking and silent about every error: nobody listening is the normal state, not a fault, and nothing may hold up a daemon counting pulses or holding a valve. |
+| `MQTT_TOPIC_PREFIX` | Change the default prefix applied to topic (`water-breaker`)|
+| `WITH_DAEMONS`      | Build the three daemons (**on** by default). Turn it off to build only what needs neither mosquitto nor M-Bus — those libraries are then not looked for either, which is what lets the tests configure on a machine that has neither. |
 | `WITH_DISPLAY`      | Build [`moses_display`](#moses_display), the LVGL front panel. Off by default; needs a C++ compiler (LVGL's build enables the language even though nothing here uses it) and pulls in the `3rd/lvgl` submodule, which is a long compile on a Pi Zero. The three daemons build with just a C compiler. |
 | `WITH_DISPLAY_TESTS`| Build the [screenshot tests](#tests). Needs LVGL but no panel, so it stands alone on a machine that cannot build `moses_display` at all. |
-| `WITH_DAEMONS`      | Build the three daemons (**on** by default). Turn it off to build only what needs neither mosquitto nor M-Bus — those libraries are then not looked for either, which is what lets the tests configure on a machine that has neither. |
-| `WITH_DGRAM`        | Also send each reading to a local unix datagram socket (`MOSES_DGRAM_PATH`, default `/run/moses.sock`), in the same [line protocol](#line-protocol-output) written to stdout. For a consumer on **this** machine, which would otherwise cross the network twice to reach a broker on another one — and be cut off entirely when that network is. Non-blocking and silent about every error: nobody listening is the normal state, not a fault, and nothing may hold up a daemon counting pulses or holding a valve. |
-| `WITH_MQTT`         | Speak MQTT (**on** by default). Off compiles the MQTT half of `src/common.c` out and drops libmosquitto from the link entirely, for a machine that wants nothing but [line protocol](#line-protocol-output) on stdout. `moses_watermeter` and `moses_sensors` still do their job; `moses_breaker` is **not built** — `state/set` is the only way to command the valve, so without a broker it would open a GPIO and wait forever, which is worse than absent because it looks like a valve controller. `WITH_DISPLAY` is refused outright, being a subscriber and nothing else. |
 | `WITH_TESTS`        | Build the unit tests (off by default, so a normal build skips them); see [Tests](#tests). |
-| `MQTT_TOPIC_PREFIX` | Change the default prefix applied to topic (`water-breaker`)|
+| `WITH_LOG`          | Enable log messages on stderr                               |
 
 The three resulting executables (`moses_watermeter`, `moses_breaker`,
 `moses_sensors`) are produced under `bin/`, joined by `moses_display`

@@ -18,26 +18,56 @@ endif()
 # Options
 #
 
-option(WITH_LOG "Enable log messages on stderr"                            OFF)
+#
+# Where a reading goes. Three sinks, none of them exclusive: a build may
+# have all three, one, or none, and every one of them is decided here
+# rather than at run time. They are grouped because they answer the same
+# question and are the options most likely to be changed together.
+#
+#   MQTT           the broker, wherever it is. Off compiles the MQTT
+#                  half of common.c out and drops libmosquitto from the
+#                  link; moses_breaker then cannot be built, having no
+#                  other way to be told to shut the water.
+#   LINEPROTOCOL   one line per reading on stdout, for piping into a
+#                  time-series database.
+#   DGRAM          the same line to a unix datagram socket, for a
+#                  consumer on this machine -- no network, and nothing
+#                  lost when the network is.
+#
+# The last two share one formatter (put_data(), put_fail()), so they
+# cannot render the same reading differently.
+#
+option(WITH_MQTT         "Speak MQTT (off drops libmosquitto entirely)"     ON)
 option(WITH_LINEPROTOCOL "Write each reading to stdout as InfluxDB line protocol" OFF)
+option(WITH_DGRAM        "Also send each reading to a local unix datagram socket" OFF)
+
+set(MQTT_TOPIC_PREFIX "water-breaker" CACHE STRING "Default prefix for topics")
+# sockaddr_un.sun_path is 104 bytes on the BSDs and 108 on Linux, and a
+# path too long to fit is refused rather than truncated -- keep it short.
+set(MOSES_DGRAM_PATH "/run/moses.sock" CACHE STRING "Local datagram socket")
+
+
+#
+# What gets built.
+#
+option(WITH_DAEMONS  "Build the three daemons (needs mosquitto, and M-Bus)" ON)
 option(WITH_DISPLAY "Build moses_display, the LVGL front panel (needs a C++ compiler)" OFF)
 option(WITH_DISPLAY_TESTS "Build the display screenshot tests (implies LVGL)"          OFF)
+option(WITH_TESTS    "Build the unit tests"                                OFF)
 
 # Which panel moses_display drives. They are not interchangeable at run
 # time: one talks to an ST7735 over SPI and needs Linux, the other opens
 # a window and needs SDL2, so the choice is made here.
 set(DISPLAY_BACKEND "automation-hat-mini" CACHE STRING "moses_display backend")
 set_property(CACHE DISPLAY_BACKEND PROPERTY STRINGS automation-hat-mini sdl)
+
+
+#
+# Diagnostics, and what CI turns on.
+#
+option(WITH_LOG      "Enable log messages on stderr"                       OFF)
 option(WITH_WERROR   "Treat warnings as errors for moses code (CI)"        OFF)
 option(WITH_ANALYZER "Run the GCC static analyzer on moses code (CI)"      OFF)
-option(WITH_TESTS    "Build the unit tests"                                OFF)
-option(WITH_DAEMONS  "Build the three daemons (needs mosquitto, and M-Bus)" ON)
-option(WITH_MQTT     "Speak MQTT (off drops libmosquitto entirely)"        ON)
-option(WITH_DGRAM    "Also send each reading to a local unix datagram socket" OFF)
-# sockaddr_un.sun_path is 104 bytes on the BSDs and 108 on Linux, and a
-# path too long to fit is refused rather than truncated -- keep it short.
-set(MOSES_DGRAM_PATH "/run/moses.sock" CACHE STRING "Local datagram socket")
-set(MQTT_TOPIC_PREFIX "water-breaker" CACHE STRING "Default prefix for topics")
 
 
 #
