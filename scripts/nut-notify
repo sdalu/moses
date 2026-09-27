@@ -16,27 +16,34 @@ set -u
 # would end the script instead of falling back. Root is the right guess when
 # it is missing: upsmon runs as root, because shutting the machine down is
 # what it is for.
-: "${MOSES_CONFIG:=${HOME:-/root}/.config/moses.yaml}"
-
-# Read one key from the yaml config. This is slow, so it is only used as a
-# fallback below when neither spelling of the variable is already set.
-yaml() { yq -r "$1" "$MOSES_CONFIG" 2>/dev/null; }
+: "${MOSES_CONFIG:=${HOME:-/root}/.config/moses.json}"
 
 # Three places, most specific first: MOSES_MQTT_*, then MQTT_*, then the
 # config file. The same order the daemons use (src/common.c, env_moses) and
 # for the same reason -- these are generic names on a machine that may run
 # more than one MQTT client, so moses gets a way to be pointed somewhere
-# else on its own, without the bare names ceasing to work. With either
-# spelling exported, yq is never invoked.
-MQTT_HOST="${MOSES_MQTT_HOST:-${MQTT_HOST:-$(yaml '.[":mqtt"][":host"]')}}"
-MQTT_PORT="${MOSES_MQTT_PORT:-${MQTT_PORT:-$(yaml '.[":mqtt"][":port"]')}}"
-MQTT_USERNAME="${MOSES_MQTT_USERNAME:-${MQTT_USERNAME:-$(yaml '.[":mqtt"][":username"]')}}"
-MQTT_PASSWORD="${MOSES_MQTT_PASSWORD:-${MQTT_PASSWORD:-$(yaml '.[":mqtt"][":password"]')}}"
+# else on its own, without the bare names ceasing to work.
+MQTT_HOST="${MOSES_MQTT_HOST:-${MQTT_HOST:-}}"
+MQTT_PORT="${MOSES_MQTT_PORT:-${MQTT_PORT:-}}"
+MQTT_USERNAME="${MOSES_MQTT_USERNAME:-${MQTT_USERNAME:-}}"
+MQTT_PASSWORD="${MOSES_MQTT_PASSWORD:-${MQTT_PASSWORD:-}}"
 
-# yq prints "null" for missing keys; treat that as unset.
-for v in MQTT_HOST MQTT_PORT MQTT_USERNAME MQTT_PASSWORD ; do
-    eval "[ \"\$$v\" = null ] && $v="
-done
+# Whatever is still unset comes from the config file, in one jq call that
+# prints all four as shell assignments. @sh quotes each value, which is
+# what makes the eval safe whatever the file holds; a missing or null key
+# is an empty string, and a file that is missing or not JSON prints
+# nothing at all. With all four already set, jq is never invoked.
+if [ -z "$MQTT_HOST" ] || [ -z "$MQTT_PORT" ] ||
+   [ -z "$MQTT_USERNAME" ] || [ -z "$MQTT_PASSWORD" ]; then
+    eval "$(jq -r '.mqtt // {} |
+        "cfg_host=\(.host     // "" | tostring | @sh)",
+        "cfg_port=\(.port     // "" | tostring | @sh)",
+        "cfg_username=\(.username // "" | tostring | @sh)",
+        "cfg_password=\(.password // "" | tostring | @sh)"' \
+        "$MOSES_CONFIG" 2>/dev/null)"
+    : "${MQTT_HOST:=${cfg_host:-}}" "${MQTT_PORT:=${cfg_port:-}}"
+    : "${MQTT_USERNAME:=${cfg_username:-}}" "${MQTT_PASSWORD:=${cfg_password:-}}"
+fi
 
 # Nothing to publish to without a broker.
 [ -n "$MQTT_HOST" ] || { echo "${0##*/}: no MQTT host configured" >&2; exit 1; }

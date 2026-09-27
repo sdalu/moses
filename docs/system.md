@@ -38,7 +38,7 @@ current state, retained, on `ups/<ups>/state`, which is what
 below with your own UPS name and password.
 
 ~~~sh
-apt install nut
+apt install nut jq mosquitto-clients   # the last two for nut-notify
 ~~~
 
 `nut.conf`:
@@ -85,16 +85,21 @@ NOTIFYFLAG NOCOMM   SYSLOG+WALL+EXEC
 `nut-notify` takes the MQTT settings from the environment, as the
 daemons do ([Environment](programs.md#environment)). `upsmon` usually
 passes none, so it falls back to `$MOSES_CONFIG`, else
-`$HOME/.config/moses.yaml` (`/root/.config/moses.yaml` without a
-`HOME`), read with `yq`:
+`$HOME/.config/moses.json` (`/root/.config/moses.json` without a
+`HOME`), read with `jq` -- plain JSON, since `jq` refuses comments:
 
-~~~yaml
-:mqtt:
-  :host: broker.example
-  :port: 1883
-  :username: moses
-  :password: secret
+~~~json
+{
+  "mqtt": {
+    "host": "broker.example",
+    "port": 1883,
+    "username": "moses",
+    "password": "secret"
+  }
+}
 ~~~
+
+It holds the broker's password, so make it `chmod 600`.
 
 
 Swap
