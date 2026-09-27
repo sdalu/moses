@@ -763,8 +763,8 @@ make  -C build
 ~~~
 
 The first three say **where a reading goes** and are independent of each
-other — a build may have all three, one, or none. The next four say what
-gets built, and the last is for diagnosis.
+other — a build may have all three, one, or none. The rest say what gets
+built, one option per program, and the last is for diagnosis.
 
 | CMake options       | Description                                                 |
 |---------------------|-------------------------------------------------------------|
@@ -772,7 +772,9 @@ gets built, and the last is for diagnosis.
 | `WITH_LINEPROTOCOL` | Also write each reading to stdout as one line of [InfluxDB line protocol](https://docs.influxdata.com/influxdb/latest/reference/syntax/line-protocol/) — `<measurement> <fields> <nanosecond-timestamp>` — for piping into a time-series database. Telegraf, VictoriaMetrics and QuestDB read the same format |
 | `WITH_DGRAM`        | Also send each reading to a local unix datagram socket (`MOSES_DGRAM_PATH`, default `/run/moses.sock`), in the same [line protocol](#line-protocol-output) written to stdout. For a consumer on **this** machine, which would otherwise cross the network twice to reach a broker on another one — and be cut off entirely when that network is. Non-blocking and silent about every error: nobody listening is the normal state, not a fault, and nothing may hold up a daemon counting pulses or holding a valve. |
 | `MQTT_TOPIC_PREFIX` | Change the default prefix applied to topic (`water-breaker`)|
-| `WITH_DAEMONS`      | Build the three daemons (**on** by default). Turn it off to build only what needs neither mosquitto nor M-Bus — those libraries are then not looked for either, which is what lets the tests configure on a machine that has neither. |
+| `WITH_WATERMETER`   | Build `moses_watermeter` (**on** by default). The only program that wants M-Bus, so turning it off is what lets the tree configure where libmbus is not installed |
+| `WITH_BREAKER`      | Build `moses_breaker` (**on** by default). Requires `WITH_MQTT`: `state/set` is the only way to command the valve, so without a broker it would open a GPIO and wait forever |
+| `WITH_TEMPERATURE`  | Build `moses_sensors`, the BME280 reader (**on** by default) |
 | `WITH_DISPLAY`      | Build [`moses_display`](#moses_display), the LVGL front panel. Off by default; needs a C++ compiler (LVGL's build enables the language even though nothing here uses it) and pulls in the `3rd/lvgl` submodule, which is a long compile on a Pi Zero. The three daemons build with just a C compiler. |
 | `WITH_DISPLAY_TESTS`| Build the [screenshot tests](#tests). Needs LVGL but no panel, so it stands alone on a machine that cannot build `moses_display` at all. |
 | `WITH_TESTS`        | Build the unit tests (off by default, so a normal build skips them); see [Tests](#tests). |
@@ -794,7 +796,7 @@ make build                      # device: the Pi the hardware is on
 make build FLAVOUR=viewer       # viewer: a window, anywhere else
 ~~~
 
-| FLAVOUR  | `WITH_DAEMONS` | `WITH_DISPLAY` | `DISPLAY_BACKEND` |
+| FLAVOUR  | the daemons | `WITH_DISPLAY` | `DISPLAY_BACKEND` |
 |----------|----------------|----------------|-------------------|
 | `device` | yes            | no             | automation-hat-mini |
 | `viewer` | no             | yes            | sdl               |
@@ -834,7 +836,8 @@ All but `parsers` need neither mosquitto nor M-Bus nor anything
 Linux-only, so they run on a development machine too:
 
 ~~~sh
-cmake -B build-nohw -DWITH_TESTS=ON -DWITH_DISPLAY_TESTS=ON -DWITH_DAEMONS=OFF
+cmake -B build-nohw -DWITH_TESTS=ON -DWITH_DISPLAY_TESTS=ON \
+      -DWITH_WATERMETER=OFF -DWITH_BREAKER=OFF -DWITH_TEMPERATURE=OFF
 make  -C build-nohw
 ctest --test-dir build-nohw --output-on-failure
 ~~~
@@ -847,14 +850,16 @@ headless test display and compares it against the reference images in
 `test/ref-imgs/`:
 
 ~~~sh
-cmake -B build-display -DWITH_DISPLAY_TESTS=ON -DWITH_DAEMONS=OFF
+cmake -B build-display -DWITH_DISPLAY_TESTS=ON \
+      -DWITH_WATERMETER=OFF -DWITH_BREAKER=OFF -DWITH_TEMPERATURE=OFF
 make  -C build-display
 ctest --test-dir build-display --output-on-failure
 ~~~
 
 It needs LVGL but no panel, no GPIO, no SPI and no broker — nothing
 Linux-only — so it runs on a development machine as well as on the Pi,
-which the rest of `moses_display` does not. `WITH_DAEMONS=OFF` is what
+which the rest of `moses_display` does not. Turning the three programs
+off is what
 lets it configure where mosquitto and libmbus are not installed.
 
 A reference image that does not exist yet is **written** rather than

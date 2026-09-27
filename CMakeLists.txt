@@ -50,7 +50,14 @@ set(MOSES_DGRAM_PATH "/run/moses.sock" CACHE STRING "Local datagram socket")
 #
 # What gets built.
 #
-option(WITH_DAEMONS  "Build the three daemons (needs mosquitto, and M-Bus)" ON)
+# One option per program rather than one for all three, because they do
+# not cost the same to build and do not need the same things present:
+# only the watermeter wants M-Bus, only the breaker cannot exist without
+# a broker to be commanded through, and a machine may legitimately want
+# one of them and not the others.
+option(WITH_WATERMETER "Build moses_watermeter (needs M-Bus)"              ON)
+option(WITH_BREAKER    "Build moses_breaker (needs MQTT to be commanded)"  ON)
+option(WITH_TEMPERATURE "Build moses_sensors, the BME280 reader"           ON)
 option(WITH_DISPLAY "Build moses_display, the LVGL front panel (needs a C++ compiler)" OFF)
 option(WITH_DISPLAY_TESTS "Build the display screenshot tests (implies LVGL)"          OFF)
 option(WITH_TESTS    "Build the unit tests"                                OFF)
@@ -119,11 +126,20 @@ find_package(Threads REQUIRED)
 # support library: whether anything needs moses_common at all, whether
 # that needs libmosquitto linked into it, and whether M-Bus is wanted.
 set(NEED_COMMON    OFF)
+set(NEED_GPIO      OFF)
 set(NEED_MOSQUITTO OFF)
 set(NEED_MBUS      OFF)
-if (WITH_DAEMONS)
-    set(NEED_COMMON ON)               # every daemon links it
-    set(NEED_MBUS   ON)               # moses_watermeter
+if (WITH_WATERMETER)
+    set(NEED_COMMON ON)
+    set(NEED_GPIO   ON)               # pulse counting
+    set(NEED_MBUS   ON)               # and only this one wants M-Bus
+endif()
+if (WITH_BREAKER)
+    set(NEED_COMMON ON)
+    set(NEED_GPIO   ON)               # the relay line
+endif()
+if (WITH_TEMPERATURE)
+    set(NEED_COMMON ON)               # the BME280 is I2C, through bitters
 endif()
 if (WITH_DISPLAY)
     set(NEED_COMMON ON)               # moses_display links it too
@@ -156,10 +172,11 @@ if (NOT WITH_MQTT)
             "WITH_DISPLAY needs WITH_MQTT: moses_display only ever "
             "subscribes, so there is nothing for it to show without a broker")
     endif()
-    if (WITH_DAEMONS)
-        message(STATUS
-            "WITH_MQTT=OFF: building moses_watermeter and moses_sensors only "
-            "(moses_breaker cannot be commanded without MQTT)")
+    if (WITH_BREAKER)
+        message(FATAL_ERROR
+            "WITH_BREAKER needs WITH_MQTT: `state/set` is the only way to "
+            "command the valve, so without a broker moses_breaker would open "
+            "a GPIO and wait forever")
     endif()
 endif()
 
@@ -238,27 +255,30 @@ endif()
 # Programs
 ######################################################################
 
-if (WITH_DAEMONS)
-
 #
 # The Linux GPIO half of the shared code. Split from moses_common so that
 # common.c stays free of <linux/gpio.h> and moses_display can be built on
-# a machine that has no such header -- see src/gpio.c.
+# a machine that has no such header -- see src/gpio.c. Built for whoever
+# drives a pin, which is the watermeter and the breaker.
 #
-add_library(moses_gpio STATIC src/gpio.c)
-target_link_libraries(moses_gpio PUBLIC moses_common)
+if (NEED_GPIO)
+    add_library(moses_gpio STATIC src/gpio.c)
+    target_link_libraries(moses_gpio PUBLIC moses_common)
+endif()
 
 #
 # Watermeter -- M-Bus index reading and/or GPIO pulse counting
 #
-add_executable(moses_watermeter src/watermeter.c)
-target_include_directories(moses_watermeter PRIVATE ${MBUS_INCLUDE_DIR})
-target_link_libraries(moses_watermeter PRIVATE moses_gpio ${MBUS_LIBRARY})
+if (WITH_WATERMETER)
+    add_executable(moses_watermeter src/watermeter.c)
+    target_include_directories(moses_watermeter PRIVATE ${MBUS_INCLUDE_DIR})
+    target_link_libraries(moses_watermeter PRIVATE moses_gpio ${MBUS_LIBRARY})
+endif()
 
 #
 # Breaker -- drive the solenoid valve relay. Needs MQTT: see above.
 #
-if (WITH_MQTT)
+if (WITH_BREAKER)
     add_executable(moses_breaker src/breaker.c src/breaker_state.c)
     target_link_libraries(moses_breaker PRIVATE moses_gpio)
 endif()
@@ -266,9 +286,9 @@ endif()
 #
 # Sensors -- read the BME280 (temperature, pressure, humidity)
 #
-add_executable(moses_sensors src/sensors.c)
-target_link_libraries(moses_sensors PRIVATE moses_common bme280 bitters)
-
+if (WITH_TEMPERATURE)
+    add_executable(moses_sensors src/sensors.c)
+    target_link_libraries(moses_sensors PRIVATE moses_common bme280 bitters)
 endif()
 
 

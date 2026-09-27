@@ -43,10 +43,10 @@ DESTDIR		?=
 FLAVOURS	 = device viewer
 FLAVOUR		?= device
 
-FLAVOUR_device_DAEMONS	= yes
+FLAVOUR_device_PROGRAMS	= yes
 FLAVOUR_device_DISPLAY	= no
 FLAVOUR_device_BACKEND	= automation-hat-mini
-FLAVOUR_viewer_DAEMONS	= no
+FLAVOUR_viewer_PROGRAMS	= no
 FLAVOUR_viewer_DISPLAY	= yes
 FLAVOUR_viewer_BACKEND	= sdl
 
@@ -56,7 +56,9 @@ FLAVOUR_viewer_BACKEND	= sdl
 WITH_LOG	?= no
 WITH_LINEPROTOCOL ?= no
 WITH_TESTS	?= no
-WITH_DAEMONS	?= $(FLAVOUR_$(FLAVOUR)_DAEMONS)
+WITH_WATERMETER	?= $(FLAVOUR_$(FLAVOUR)_PROGRAMS)
+WITH_BREAKER	?= $(FLAVOUR_$(FLAVOUR)_PROGRAMS)
+WITH_TEMPERATURE ?= $(FLAVOUR_$(FLAVOUR)_PROGRAMS)
 WITH_MQTT	?= yes
 WITH_DGRAM	?= no
 WITH_DISPLAY	?= $(FLAVOUR_$(FLAVOUR)_DISPLAY)
@@ -83,7 +85,9 @@ CMAKEFLAGS	+= -DWITH_LINEPROTOCOL=$(ON_$(WITH_LINEPROTOCOL))
 CMAKEFLAGS	+= -DWITH_DGRAM=$(ON_$(WITH_DGRAM))
 CMAKEFLAGS	+= -DMQTT_TOPIC_PREFIX=$(MQTT_TOPIC_PREFIX)
 CMAKEFLAGS	+= -DMOSES_DGRAM_PATH=$(MOSES_DGRAM_PATH)
-CMAKEFLAGS	+= -DWITH_DAEMONS=$(ON_$(WITH_DAEMONS))
+CMAKEFLAGS	+= -DWITH_WATERMETER=$(ON_$(WITH_WATERMETER))
+CMAKEFLAGS	+= -DWITH_BREAKER=$(ON_$(WITH_BREAKER))
+CMAKEFLAGS	+= -DWITH_TEMPERATURE=$(ON_$(WITH_TEMPERATURE))
 CMAKEFLAGS	+= -DWITH_DISPLAY=$(ON_$(WITH_DISPLAY))
 CMAKEFLAGS	+= -DWITH_DISPLAY_TESTS=$(ON_$(WITH_DISPLAY_TESTS))
 CMAKEFLAGS	+= -DWITH_TESTS=$(ON_$(WITH_TESTS))
@@ -97,12 +101,31 @@ HELPERS		= loop-runner nut-notify
 # What `install` puts down is what this configuration actually built,
 # not whatever happens to be lying in bin/ from an earlier run. Keyed by
 # the same indirection as everything else.
-PARTS_yes	= bin/moses_watermeter bin/moses_breaker bin/moses_sensors
-PARTS_yes	+= scripts/loop-runner scripts/nut-notify
-PARTS_no	=
+METER_yes	= bin/moses_watermeter
+METER_no	=
+VALVE_yes	= bin/moses_breaker
+VALVE_no	=
+TEMP_yes	= bin/moses_sensors
+TEMP_no		=
 SCREEN_yes	= bin/moses_display
 SCREEN_no	=
-INSTALL_FILES	= $(PARTS_$(WITH_DAEMONS)) $(SCREEN_$(WITH_DISPLAY))
+# loop-runner supervises a daemon and nut-notify feeds the UPS state, so
+# they go down with the first daemon that is built and not otherwise.
+HELP_yes	= scripts/loop-runner scripts/nut-notify
+HELP_no		=
+ANY		= $(WITH_WATERMETER)$(WITH_BREAKER)$(WITH_TEMPERATURE)
+ANY_yesyesyes	= yes
+ANY_yesyesno	= yes
+ANY_yesnoyes	= yes
+ANY_yesnono	= yes
+ANY_noyesyes	= yes
+ANY_noyesno	= yes
+ANY_nonoyes	= yes
+ANY_nonono	= no
+
+INSTALL_FILES	= $(METER_$(WITH_WATERMETER)) $(VALVE_$(WITH_BREAKER))	\
+		  $(TEMP_$(WITH_TEMPERATURE)) $(SCREEN_$(WITH_DISPLAY))	\
+		  $(HELP_$(ANY_$(ANY)))
 
 # Everything install could ever have put down, for uninstall to take
 # back. rm -f, so removing a configuration's worth that was never
@@ -149,7 +172,9 @@ help:						## show this help (the default)
 	@echo ''
 	@echo 'What gets built (yes/no; see `make options`):'
 	@printf '  %-18s %s\n'						      \
-	    WITH_DAEMONS	'$(WITH_DAEMONS)  (the three daemons; needs M-Bus)' \
+	    WITH_WATERMETER	'$(WITH_WATERMETER)  (moses_watermeter; needs M-Bus)' \
+	    WITH_BREAKER	'$(WITH_BREAKER)  (moses_breaker; needs WITH_MQTT)' \
+	    WITH_TEMPERATURE	'$(WITH_TEMPERATURE)  (moses_sensors, the BME280)' \
 	    WITH_DISPLAY	'$(WITH_DISPLAY)  (moses_display; pulls in LVGL, a long compile)' \
 	    WITH_DISPLAY_TESTS	'$(WITH_DISPLAY_TESTS)  (the screenshot tests; needs LVGL, not a panel)' \
 	    WITH_TESTS		'$(WITH_TESTS)  (build the unit tests; `make tests` sets it)'
@@ -236,7 +261,9 @@ tests: check-flavour check-submodules				## build and run the unit tests, and re
 
 tests-display: WITH_DISPLAY_TESTS = yes
 tests-display: WITH_TESTS = no
-tests-display: WITH_DAEMONS = no
+tests-display: WITH_WATERMETER = no
+tests-display: WITH_BREAKER = no
+tests-display: WITH_TEMPERATURE = no
 tests-display: check-flavour check-submodules			## render the display's screen and compare with test/ref-imgs
 	$(CMAKE) -B $(BUILD) $(CMAKEFLAGS)
 	$(CMAKE) --build $(BUILD) --parallel $(JOBS)
@@ -244,7 +271,9 @@ tests-display: check-flavour check-submodules			## render the display's screen a
 
 tests-nohw: WITH_TESTS = yes
 tests-nohw: WITH_DISPLAY_TESTS = yes
-tests-nohw: WITH_DAEMONS = no
+tests-nohw: WITH_WATERMETER = no
+tests-nohw: WITH_BREAKER = no
+tests-nohw: WITH_TEMPERATURE = no
 tests-nohw: check-flavour check-submodules			## the tests that need neither mosquitto, M-Bus nor Linux
 	$(CMAKE) -B $(BUILD) $(CMAKEFLAGS)
 	$(CMAKE) --build $(BUILD) --parallel $(JOBS)
@@ -262,9 +291,9 @@ flavours:					## the flavours, and the knobs each one stands for
 	@echo 'FLAVOUR picks a machine. Any knob can still be set on its own.'
 	@echo ''
 	@printf '  %-8s %-14s %-14s %s\n'				\
-	    ''       'WITH_DAEMONS' 'WITH_DISPLAY' 'DISPLAY_BACKEND'	\
-	    'device' '$(FLAVOUR_device_DAEMONS)' '$(FLAVOUR_device_DISPLAY)' '$(FLAVOUR_device_BACKEND)' \
-	    'viewer' '$(FLAVOUR_viewer_DAEMONS)' '$(FLAVOUR_viewer_DISPLAY)' '$(FLAVOUR_viewer_BACKEND)'
+	    ''       'the daemons' 'WITH_DISPLAY' 'DISPLAY_BACKEND'	\
+	    'device' '$(FLAVOUR_device_PROGRAMS)' '$(FLAVOUR_device_DISPLAY)' '$(FLAVOUR_device_BACKEND)' \
+	    'viewer' '$(FLAVOUR_viewer_PROGRAMS)' '$(FLAVOUR_viewer_DISPLAY)' '$(FLAVOUR_viewer_BACKEND)'
 	@echo ''
 	@echo 'device: the Raspberry Pi the hardware is on. viewer: anywhere'
 	@echo 'else, moses_display alone in a window, watching the same broker.'
@@ -284,7 +313,9 @@ options:					## every build knob, and what it defaults to
 	@echo ''
 	@echo 'What gets built:'
 	@printf '  %-20s %-21s %s\n'					\
-	    'WITH_DAEMONS'	 'yes'	'the three daemons'		\
+	    'WITH_WATERMETER'	 'yes'	'moses_watermeter; the only one wanting M-Bus' \
+	    'WITH_BREAKER'	 'yes'	'moses_breaker; needs WITH_MQTT to be commanded' \
+	    'WITH_TEMPERATURE'	 'yes'	'moses_sensors, the BME280 reader' \
 	    'WITH_DISPLAY'	 'no'	'moses_display, the LVGL front panel' \
 	    'WITH_DISPLAY_TESTS' 'no'	'the screenshot tests'		\
 	    'WITH_TESTS'	 'no'	'build the unit tests'		\
@@ -297,7 +328,7 @@ options:					## every build knob, and what it defaults to
 	    'WITH_ANALYZER'	 'no'	'run the GCC static analyzer'
 
 features:					## what this invocation selected, as shell variables
-	@echo '# FLAVOUR=$(FLAVOUR) WITH_LOG=$(WITH_LOG) WITH_LINEPROTOCOL=$(WITH_LINEPROTOCOL) WITH_TESTS=$(WITH_TESTS) WITH_DAEMONS=$(WITH_DAEMONS) WITH_MQTT=$(WITH_MQTT) WITH_DGRAM=$(WITH_DGRAM) WITH_DISPLAY=$(WITH_DISPLAY) DISPLAY_BACKEND=$(DISPLAY_BACKEND)'
+	@echo '# FLAVOUR=$(FLAVOUR) WITH_LOG=$(WITH_LOG) WITH_LINEPROTOCOL=$(WITH_LINEPROTOCOL) WITH_TESTS=$(WITH_TESTS) WITH_WATERMETER=$(WITH_WATERMETER) WITH_BREAKER=$(WITH_BREAKER) WITH_TEMPERATURE=$(WITH_TEMPERATURE) WITH_MQTT=$(WITH_MQTT) WITH_DGRAM=$(WITH_DGRAM) WITH_DISPLAY=$(WITH_DISPLAY) DISPLAY_BACKEND=$(DISPLAY_BACKEND)'
 	@echo "MOSES_CMAKE_FLAGS='$(CMAKEFLAGS)'"
 	@echo "MOSES_BUILD='$(BUILD)'"
 
