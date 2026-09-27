@@ -43,6 +43,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -148,16 +149,20 @@ on_tick(lv_timer_t *timer)
  * `water-breaker/moses` -- so the name is there to be read rather than
  * configured a second time and kept in step by hand.
  *
- * Deliberately not the hostname. Over MQTT the machine running this is
- * whichever one someone opened a window on, which is not what the
- * screen is about: the first SDL build of it sat on a workstation
- * reporting `hyperion` above moses's water meter. The hostname becomes
- * the right answer again only for a source that is local by
- * construction -- the system bus of src/display/source-dbus.c, where
- * the producer is necessarily this machine.
+ * Deliberately not the hostname over MQTT. There the machine running
+ * this is whichever one someone opened a window on, which is not what
+ * the screen is about: the first SDL build of it sat on a workstation
+ * reporting `hyperion` above moses's water meter.
+ *
+ * Under --source=local the hostname is the right answer again: every
+ * figure comes from this machine by construction. So there the short
+ * hostname is the name when MQTT_TOPIC_PREFIX is not set -- the
+ * compiled-in default names no installation -- and when it is set, its
+ * last segment is still used but checked against the hostname, since
+ * the two disagreeing means one of them was copied from elsewhere.
  */
 static const char *
-device_name(const char *prefix)
+prefix_name(const char *prefix)
 {
     const char *slash = strrchr(prefix, '/');
 
@@ -166,6 +171,42 @@ device_name(const char *prefix)
     if ((slash == NULL) || (slash[1] == '\0'))
 	return prefix;
     return slash + 1;
+}
+
+
+static const char *
+device_name(bool local)
+{
+    static char host[256];
+    const char *name = prefix_name(mqtt_topic_prefix());
+
+    const char *from = mqtt_topic_prefix_set() ? "MQTT_TOPIC_PREFIX"
+					       : "compiled-in prefix";
+    (void)from;				/* LOG() is nothing without WITH_LOG */
+
+    if (! local) {
+	LOG("Name                 : %s (%s)", name, from);
+	return name;
+    }
+
+    if (gethostname(host, sizeof(host)) < 0) {
+	LOG_ERRNO("cannot read the hostname");
+	LOG("Name                 : %s (%s)", name, from);
+	return name;
+    }
+    host[sizeof(host) - 1] = '\0';
+    host[strcspn(host, ".")] = '\0';		/* the short name */
+
+    if (! mqtt_topic_prefix_set()) {
+	LOG("Name                 : %s (hostname)", host);
+	return host;
+    }
+    if (strcasecmp(name, host) != 0)
+	LOG("Name                 : %s (MQTT_TOPIC_PREFIX), "
+	    "but this host is %s", name, host);
+    else
+	LOG("Name                 : %s (MQTT_TOPIC_PREFIX, the hostname)", name);
+    return name;
 }
 
 
@@ -293,8 +334,6 @@ main(int argc, char *argv[])
     }
 
     backend_set_backlight(true);
-    dashboard_create(backend_accent_color(), d->stale_after,
-		     device_name(mqtt_topic_prefix()));
 
     /*
      * Where everything comes from, which --source picks.
@@ -350,6 +389,11 @@ main(int argc, char *argv[])
 	(source == SOURCE_LOCAL) ? "local" : "mqtt",
 	why ? " (auto: " : "", why ? why : "", why ? ")" : "");
     (void)why;
+
+    /* Created once the source is known: the name at the top of it
+     * depends on whether this is local. */
+    dashboard_create(backend_accent_color(), d->stale_after,
+		     device_name(source == SOURCE_LOCAL));
 
     /*
      * The UPS: upsd on this machine when local, or when --ups asks for

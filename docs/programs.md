@@ -99,7 +99,10 @@ the [system bus](interfaces.md#the-system-bus) (`--source`), and draws:
 That is what `test/ref-imgs/dashboard-flow.png` holds. The name at the
 top left is the last segment of `MQTT_TOPIC_PREFIX` (`moses`, out of
 `water-breaker/moses`), not the hostname of whatever machine is showing
-it. A flow of `+N` stays up for 30 seconds after a pulse report.
+it. With `--source=local` every figure is this machine's, so there the
+hostname's short name is used when `MQTT_TOPIC_PREFIX` is not set; when
+it is, its last segment still names the panel, and a start-up line says
+so if it is not the hostname. A flow of `+N` stays up for 30 seconds after a pulse report.
 
 | Colour   | Meaning                                                           |
 | -------- | ----------------------------------------------------------------- |

@@ -306,6 +306,10 @@ bool mqtt_enabled(const struct mqtt *mqtt);
 // to the compiled-in default. Pass the result to MQTT_ADJUST_TOPIC().
 const char *mqtt_topic_prefix(void);
 
+// Whether MQTT_TOPIC_PREFIX (or MOSES_MQTT_TOPIC_PREFIX) is set, rather
+// than mqtt_topic_prefix() falling back to the compiled-in default.
+bool mqtt_topic_prefix_set(void);
+
 // Open a single GPIO line on chip "/dev/<chip>". The caller fills req->config
 // (flags and attrs); this sets the single-line plumbing (num_lines, offset,
 // consumer label), issues GPIO_V2_GET_LINE_IOCTL and leaves the line fd in

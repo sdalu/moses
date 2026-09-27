@@ -453,6 +453,13 @@ mqtt_topic_prefix(void)
 }
 
 
+bool
+mqtt_topic_prefix_set(void)
+{
+    return env_moses("MQTT_TOPIC_PREFIX") != NULL;
+}
+
+
 
 /************************************************************************
  * Mosquitto                                                            *
