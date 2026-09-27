@@ -25,21 +25,48 @@ PREFIX		?= /usr/local
 BINDIR		?= $(PREFIX)/bin
 DESTDIR		?=
 
+#
+# Flavours: the two machines this is built for, each a set of knobs.
+#
+#   device  the Raspberry Pi the hardware is on -- the daemons, and the
+#           display wired for the Automation HAT Mini's panel should it
+#           be asked for. These are the plain defaults, so a bare
+#           `make build` is this and nothing changes for typing nothing.
+#   viewer  anywhere else -- moses_display alone, in an SDL window,
+#           watching the same broker. No daemons, so neither mosquitto's
+#           hardware nor M-Bus need exist on that machine.
+#
+# Every knob below takes its default from the flavour and is still
+# settable on its own, because `?=` leaves a value the caller gave
+# alone: `make build FLAVOUR=viewer WITH_LOG=yes` is both.
+#
+FLAVOURS	 = device viewer
+FLAVOUR		?= device
+
+FLAVOUR_device_DAEMONS	= yes
+FLAVOUR_device_DISPLAY	= no
+FLAVOUR_device_BACKEND	= automation-hat-mini
+FLAVOUR_viewer_DAEMONS	= no
+FLAVOUR_viewer_DISPLAY	= yes
+FLAVOUR_viewer_BACKEND	= sdl
+
 # The build knobs, as CMakeLists.txt names them. Kept as yes/no here and
 # turned into CMake's ON/OFF by the indirection below, because `ifeq` is
 # GNU-only and BSD make rejects the line outright.
 WITH_LOG	?= no
 WITH_LINEPROTOCOL ?= no
 WITH_TESTS	?= no
-WITH_DAEMONS	?= yes
+WITH_DAEMONS	?= $(FLAVOUR_$(FLAVOUR)_DAEMONS)
 WITH_MQTT	?= yes
-WITH_DISPLAY	?= no
+WITH_DGRAM	?= no
+WITH_DISPLAY	?= $(FLAVOUR_$(FLAVOUR)_DISPLAY)
 WITH_DISPLAY_TESTS ?= no
 WITH_WERROR	?= no
 WITH_ANALYZER	?= no
 
-DISPLAY_BACKEND	?= automation-hat-mini
+DISPLAY_BACKEND	?= $(FLAVOUR_$(FLAVOUR)_BACKEND)
 MQTT_TOPIC_PREFIX ?= water-breaker
+MOSES_DGRAM_PATH ?= /run/moses.sock
 
 ON_yes		= ON
 ON_no		= OFF
@@ -54,6 +81,8 @@ CMAKEFLAGS	+= -DWITH_LINEPROTOCOL=$(ON_$(WITH_LINEPROTOCOL))
 CMAKEFLAGS	+= -DWITH_TESTS=$(ON_$(WITH_TESTS))
 CMAKEFLAGS	+= -DWITH_DAEMONS=$(ON_$(WITH_DAEMONS))
 CMAKEFLAGS	+= -DWITH_MQTT=$(ON_$(WITH_MQTT))
+CMAKEFLAGS	+= -DWITH_DGRAM=$(ON_$(WITH_DGRAM))
+CMAKEFLAGS	+= -DMOSES_DGRAM_PATH=$(MOSES_DGRAM_PATH)
 CMAKEFLAGS	+= -DWITH_DISPLAY=$(ON_$(WITH_DISPLAY))
 CMAKEFLAGS	+= -DWITH_DISPLAY_TESTS=$(ON_$(WITH_DISPLAY_TESTS))
 CMAKEFLAGS	+= -DWITH_WERROR=$(ON_$(WITH_WERROR))
@@ -79,9 +108,9 @@ INSTALL_FILES	= $(PARTS_$(WITH_DAEMONS)) $(SCREEN_$(WITH_DISPLAY))
 INSTALLED	= moses_watermeter moses_breaker moses_sensors moses_display
 INSTALLED	+= loop-runner nut-notify
 
-.PHONY: help all check check-submodules check-shell build \
+.PHONY: help all check check-flavour check-submodules check-shell build \
 	tests tests-display tests-nohw \
-	options features clean distclean install uninstall
+	flavours options features clean distclean install uninstall
 
 
 help:						## show this help (the default)
@@ -101,6 +130,7 @@ help:						## show this help (the default)
 	@echo ''
 	@echo 'Variables (current value):'
 	@printf '  %-16s %s\n'						      \
+	    FLAVOUR		'$(FLAVOUR)  (one of: $(FLAVOURS); see `make flavours`)' \
 	    BUILD		'$(BUILD)  (build directory)'		      \
 	    CMAKE		'$(CMAKE)'				      \
 	    JOBS		'$(JOBS)  (parallel build jobs; cores by default)' \
@@ -113,6 +143,7 @@ help:						## show this help (the default)
 	@printf '  %-16s %s\n'						      \
 	    WITH_DAEMONS	'$(WITH_DAEMONS)  (the three daemons; needs M-Bus)' \
 	    WITH_MQTT		'$(WITH_MQTT)  (no drops libmosquitto, and moses_breaker with it)' \
+	    WITH_DGRAM		'$(WITH_DGRAM)  (readings to $(MOSES_DGRAM_PATH) as well)' \
 	    WITH_DISPLAY	'$(WITH_DISPLAY)  (moses_display; pulls in LVGL, a long compile)' \
 	    WITH_DISPLAY_TESTS	'$(WITH_DISPLAY_TESTS)  (the screenshot tests; needs LVGL, not a panel)' \
 	    WITH_LOG		'$(WITH_LOG)  (log messages on stderr)'	      \
@@ -134,7 +165,14 @@ all: check build				## preflight, then build what this configuration selects
 # Preflight. Runs none of moses's own code, needs nothing built, and is
 # the first thing to run when something looks wrong.
 #
-check: check-submodules check-shell		## preflight: this tree is fit to build
+check: check-flavour check-submodules check-shell	## preflight: this tree is fit to build
+
+check-flavour:					## FLAVOUR names a set of knobs that exists
+	@case ' $(FLAVOURS) ' in						\
+	    *' $(FLAVOUR) '*)	;;					\
+	    *) echo 'make: unknown FLAVOUR=$(FLAVOUR); one of: $(FLAVOURS)' >&2; \
+	       exit 1 ;;							\
+	esac
 
 # Guarded twice, and both arms were earned rather than imagined. The
 # gate runs from an rsync'd copy of this tree with .git left behind
@@ -172,7 +210,7 @@ check-shell:					## the helper scripts pass shellcheck
 # with different options is the failure that looks like a code error and
 # is not.
 #
-build: check-submodules				## build what this configuration selects
+build: check-flavour check-submodules				## build what this configuration selects
 	$(CMAKE) -B $(BUILD) $(CMAKEFLAGS)
 	$(CMAKE) --build $(BUILD) --parallel $(JOBS)
 
@@ -183,7 +221,7 @@ build: check-submodules				## build what this configuration selects
 # half was red.
 #
 tests: WITH_TESTS = yes
-tests: check-submodules				## build and run the unit tests, and report
+tests: check-flavour check-submodules				## build and run the unit tests, and report
 	$(CMAKE) -B $(BUILD) $(CMAKEFLAGS)
 	$(CMAKE) --build $(BUILD) --parallel $(JOBS)
 	$(CTEST) --test-dir $(BUILD) --output-on-failure
@@ -191,7 +229,7 @@ tests: check-submodules				## build and run the unit tests, and report
 tests-display: WITH_DISPLAY_TESTS = yes
 tests-display: WITH_TESTS = no
 tests-display: WITH_DAEMONS = no
-tests-display: check-submodules			## render the display's screen and compare with test/ref-imgs
+tests-display: check-flavour check-submodules			## render the display's screen and compare with test/ref-imgs
 	$(CMAKE) -B $(BUILD) $(CMAKEFLAGS)
 	$(CMAKE) --build $(BUILD) --parallel $(JOBS)
 	$(CTEST) --test-dir $(BUILD) --output-on-failure -R dashboard
@@ -199,7 +237,7 @@ tests-display: check-submodules			## render the display's screen and compare wit
 tests-nohw: WITH_TESTS = yes
 tests-nohw: WITH_DISPLAY_TESTS = yes
 tests-nohw: WITH_DAEMONS = no
-tests-nohw: check-submodules			## the tests that need neither mosquitto, M-Bus nor Linux
+tests-nohw: check-flavour check-submodules			## the tests that need neither mosquitto, M-Bus nor Linux
 	$(CMAKE) -B $(BUILD) $(CMAKEFLAGS)
 	$(CMAKE) --build $(BUILD) --parallel $(JOBS)
 	$(CTEST) --test-dir $(BUILD) --output-on-failure
@@ -212,6 +250,18 @@ tests-nohw: check-submodules			## the tests that need neither mosquitto, M-Bus n
 #     eval "$$(make -s features)"
 #     echo "$$MOSES_CMAKE_FLAGS"
 #
+flavours:					## the flavours, and the knobs each one stands for
+	@echo 'FLAVOUR picks a machine. Any knob can still be set on its own.'
+	@echo ''
+	@printf '  %-8s %-14s %-14s %s\n'				\
+	    ''       'WITH_DAEMONS' 'WITH_DISPLAY' 'DISPLAY_BACKEND'	\
+	    'device' '$(FLAVOUR_device_DAEMONS)' '$(FLAVOUR_device_DISPLAY)' '$(FLAVOUR_device_BACKEND)' \
+	    'viewer' '$(FLAVOUR_viewer_DAEMONS)' '$(FLAVOUR_viewer_DISPLAY)' '$(FLAVOUR_viewer_BACKEND)'
+	@echo ''
+	@echo 'device: the Raspberry Pi the hardware is on. viewer: anywhere'
+	@echo 'else, moses_display alone in a window, watching the same broker.'
+
+
 options:					## every build knob, and what it defaults to
 	@echo 'Build options, as CMakeLists.txt defines them.'
 	@echo 'Set any of them on the command line: make tests WITH_WERROR=yes'
@@ -219,6 +269,7 @@ options:					## every build knob, and what it defaults to
 	@printf '  %-20s %-8s %s\n'					\
 	    'WITH_DAEMONS'	 'yes'	'the three daemons'		\
 	    'WITH_MQTT'		 'yes'	'speak MQTT; no drops libmosquitto' \
+	    'WITH_DGRAM'	 'no'	'readings to a local datagram socket too' \
 	    'WITH_DISPLAY'	 'no'	'moses_display, the LVGL front panel' \
 	    'WITH_DISPLAY_TESTS' 'no'	'the screenshot tests'		\
 	    'WITH_LOG'		 'no'	'log messages on stderr'	\
@@ -230,7 +281,7 @@ options:					## every build knob, and what it defaults to
 	    'MQTT_TOPIC_PREFIX'	 'water-breaker' 'compiled-in topic prefix'
 
 features:					## what this invocation selected, as shell variables
-	@echo '# WITH_LOG=$(WITH_LOG) WITH_LINEPROTOCOL=$(WITH_LINEPROTOCOL) WITH_TESTS=$(WITH_TESTS) WITH_DAEMONS=$(WITH_DAEMONS) WITH_MQTT=$(WITH_MQTT) WITH_DISPLAY=$(WITH_DISPLAY) DISPLAY_BACKEND=$(DISPLAY_BACKEND)'
+	@echo '# FLAVOUR=$(FLAVOUR) WITH_LOG=$(WITH_LOG) WITH_LINEPROTOCOL=$(WITH_LINEPROTOCOL) WITH_TESTS=$(WITH_TESTS) WITH_DAEMONS=$(WITH_DAEMONS) WITH_MQTT=$(WITH_MQTT) WITH_DGRAM=$(WITH_DGRAM) WITH_DISPLAY=$(WITH_DISPLAY) DISPLAY_BACKEND=$(DISPLAY_BACKEND)'
 	@echo "MOSES_CMAKE_FLAGS='$(CMAKEFLAGS)'"
 	@echo "MOSES_BUILD='$(BUILD)'"
 

@@ -48,9 +48,31 @@ MQTT / integration
 A local socket, beside MQTT
 ---------------------------
 
-Proposed, not built. A unix datagram socket carrying the same messages
-as MQTT, so a producer on this machine can feed a consumer on this
-machine without the broker in between.
+**The producing half is built** (`WITH_DGRAM`); the consuming half is
+not. A unix datagram socket carrying the same readings as MQTT, so a
+producer on this machine can feed a consumer on this machine without
+the broker in between.
+
+What landed differs from the design below in one way, and for the
+better: the socket carries the **line protocol** the daemons already
+emit under `WITH_LINEPROTOCOL`, not `<topic> <payload>`. That needed no
+new call site at all -- `PUT_DATA` and `PUT_FAIL` are already at every
+reading, so they gained a second sink instead of the daemons gaining a
+third call -- and it carries a real timestamp, which an MQTT payload
+does not. It is also a format other things read: Telegraf's
+`socket_listener` ingests it as it stands.
+
+What remains is `src/display/source-unix.c`: bind the socket, parse the
+line protocol, call the same `model_set_*()` as the other two sources.
+The measurement and field names (`watermeter index=`, `environment
+temperature=`) are a different vocabulary from the MQTT topics, so the
+dispatch is its own, though `payload_double()` and friends still parse
+the values.
+
+Two things the socket cannot carry, both already true of the design
+below: no retention, so a consumer that starts between readings waits
+for the next one; and no last will, so liveness degrades to the
+`--stale` timeout alone.
 
 **Why it is worth it here.** The broker is not on moses -- it is at
 another host on the LAN. Today the index that `moses_watermeter` reads

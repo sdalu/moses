@@ -56,6 +56,7 @@ struct gpio_v2_line_request;            // <linux/gpio.h>, only consumers need i
 
 
 
+
 /************************************************************************
  * Log and debug                                                        *
  ************************************************************************/
@@ -126,7 +127,31 @@ struct gpio_v2_line_request;            // <linux/gpio.h>, only consumers need i
  * anything consuming them.
  */
 
-#ifdef WITH_LINEPROTOCOL
+/*
+ * A reading, as one line of InfluxDB line protocol, to every sink this
+ * build has.
+ *
+ *     <measurement> <field>[,<field>...] <nanosecond timestamp>
+ *
+ *     watermeter index=213044.000 1790489588441408829
+ *     environment temperature=21.42,pressure=102134 1790489588441443042
+ *     watermeter failure="read" 1790489588441449592
+ *
+ * Two sinks, chosen at compile time and independent of each other:
+ * WITH_LINEPROTOCOL writes the line to stdout, WITH_DGRAM sends it to
+ * the local datagram socket. One format for both, so a consumer on
+ * either reads the same thing -- and it is a format other tools already
+ * read, Telegraf's socket_listener among them, rather than something
+ * private to this tree.
+ *
+ * The quotes around a failure are not decoration: a field value that is
+ * not a number, a boolean or a quoted string is a parse error, and the
+ * whole line is refused.
+ *
+ * With neither option the macros compile to nothing, which is why they
+ * are macros at all; the work is in put_data() and put_fail().
+ */
+#if defined(WITH_LINEPROTOCOL) || defined(WITH_DGRAM)
 
 #ifndef PUT_LOCK
 #define PUT_LOCK()
@@ -140,39 +165,20 @@ struct gpio_v2_line_request;            // <linux/gpio.h>, only consumers need i
 #define PUT_CLOCK CLOCK_TAI
 #endif
 
-#ifndef PUT_DATA
-#define PUT_DATA(type, fmt, ...) do {					\
-	int errno_saved = errno;					\
-	PUT_LOCK()							\
-	struct timespec ts;						\
-	clock_gettime(PUT_CLOCK, &ts);					\
-	fprintf(stdout, "%s " fmt " %lld%09ld" "\n",			\
-		type __VA_OPT__(,) __VA_ARGS__,				\
-		(long long)ts.tv_sec, ts.tv_nsec);			\
-	fflush(stdout);							\
-	PUT_UNLOCK()							\
-	errno = errno_saved;						\
-    } while(0)
-#endif
+void __attribute__ ((format(printf, 2, 3)))
+put_data(const char *type, const char *fmt, ...);
 
-#ifndef PUT_FAIL
-#define PUT_FAIL(type, failure) do {					\
-	int errno_saved = errno;					\
-	PUT_LOCK()							\
-	struct timespec ts;						\
-	clock_gettime(PUT_CLOCK, &ts);					\
-	fprintf(stdout, "%s failure=\"%s\" %lld%09ld\n",		\
-		type, failure, (long long)ts.tv_sec, ts.tv_nsec);	\
-	fflush(stdout);							\
-	PUT_UNLOCK()							\
-	errno = errno_saved;						\
-    } while(0)
-#endif
+void put_fail(const char *type, const char *failure);
+
+#define PUT_DATA(type, fmt, ...)					\
+    put_data(type, fmt __VA_OPT__(,) __VA_ARGS__)
+#define PUT_FAIL(type, failure)						\
+    put_fail(type, failure)
 
 #else
 
-#define PUT_DATA(type, fmt, ...)
-#define PUT_FAIL(type, failure)
+#define PUT_DATA(type, fmt, ...)	do { } while (0)
+#define PUT_FAIL(type, failure)		do { } while (0)
 
 #endif
 
@@ -285,6 +291,12 @@ int mqtt_connect(struct mqtt *mqtt,
 		 char *avail_topic, mqtt_message_cb on_message);
 
 void mqtt_config_from_env(struct mqtt *mqtt);
+
+#ifdef WITH_DGRAM
+// The socket the readings go to: $MOSES_DGRAM_PATH, or the compiled-in
+// default. The consumer binds it; producers only ever send.
+const char *dgram_path(void);
+#endif
 
 // True when MQTT is configured (a host is set). When false the daemon runs
 // without publishing, so the topic plumbing and logging can be skipped.

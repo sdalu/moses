@@ -25,6 +25,10 @@
 #include <time.h>
 #include <sched.h>
 #include <sys/mman.h>
+#ifdef WITH_DGRAM
+#include <sys/socket.h>
+#include <sys/un.h>
+#endif
 
 #ifdef WITH_MQTT
 #include <mosquitto.h>
@@ -170,6 +174,146 @@ reduced_latency(void)
     }
 }
 
+
+
+/************************************************************************
+ * Readings out                                                         *
+ ************************************************************************/
+
+#if defined(WITH_LINEPROTOCOL) || defined(WITH_DGRAM)
+
+/*
+ * A reading leaves this program as one line of InfluxDB line protocol,
+ * and goes to whichever sinks the build has: stdout, the local datagram
+ * socket, or both. See common.h for the shape of the line.
+ *
+ * One formatter, so the two sinks cannot drift into carrying slightly
+ * different renderings of the same reading.
+ */
+
+#ifdef WITH_DGRAM
+
+/*
+ * The socket sink.
+ *
+ * Worth having because the broker is usually somewhere else: a reading
+ * taken here otherwise crosses the network twice to reach a consumer
+ * sitting beside it, and is gone entirely when that network is. This
+ * has neither hop.
+ *
+ * Everything about it is arranged so that it cannot hold a daemon up.
+ * SOCK_DGRAM, so there is no connection to establish or lose and a
+ * consumer that restarts is picked up with nothing reopened.
+ * Non-blocking, so a consumer that has stopped reading cannot stall a
+ * send. And every error swallowed, because the ordinary state of this
+ * machine is that nobody is listening at all -- ENOENT for no socket
+ * file, ECONNREFUSED for one nobody has open, EAGAIN for a consumer not
+ * keeping up. A valve controller must never wait on a display.
+ */
+
+static int dgram_fd = -1;
+
+
+const char *
+dgram_path(void)
+{
+    const char *path = getenv("MOSES_DGRAM_PATH");
+    return path ? path : MOSES_DGRAM_PATH;
+}
+
+
+static void
+dgram_send(const char *line, size_t len)
+{
+    if (dgram_fd < 0) {
+	dgram_fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+	if (dgram_fd < 0)
+	    return;
+    }
+
+    struct sockaddr_un addr = { .sun_family = AF_UNIX };
+    const char *path = dgram_path();
+    if (strlen(path) >= sizeof(addr.sun_path))
+	return;				/* a path that cannot be used */
+    strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
+
+    (void)sendto(dgram_fd, line, len, 0,
+		 (const struct sockaddr *)&addr, sizeof(addr));
+}
+
+#endif	/* WITH_DGRAM */
+
+
+// Hand one finished line to every sink compiled in.
+static void
+put_line(const char *line, size_t len)
+{
+#ifdef WITH_LINEPROTOCOL
+    fwrite(line, 1, len, stdout);
+    fflush(stdout);
+#endif
+#ifdef WITH_DGRAM
+    /* Without the trailing newline: a datagram carries its own length,
+     * and the line terminator is stdout's business. */
+    dgram_send(line, (len > 0) ? len - 1 : len);
+#endif
+}
+
+
+void
+put_data(const char *type, const char *fmt, ...)
+{
+    int errno_saved = errno;
+    char fields[512];
+
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(fields, sizeof(fields), fmt, ap);
+    va_end(ap);
+    if (n < 0) {
+	errno = errno_saved;
+	return;
+    }
+
+    struct timespec ts;
+    clock_gettime(PUT_CLOCK, &ts);
+
+    char line[768];
+    n = snprintf(line, sizeof(line), "%s %s %lld%09ld\n",
+		 type, fields, (long long)ts.tv_sec, ts.tv_nsec);
+    if (n > 0) {
+	PUT_LOCK()
+	put_line(line, ((size_t)n < sizeof(line)) ? (size_t)n
+						  : sizeof(line) - 1);
+	PUT_UNLOCK()
+    }
+    errno = errno_saved;
+}
+
+
+void
+put_fail(const char *type, const char *failure)
+{
+    int errno_saved = errno;
+
+    struct timespec ts;
+    clock_gettime(PUT_CLOCK, &ts);
+
+    /* Quoted: a field value which is neither a number, a boolean nor a
+     * quoted string is a parse error, and the whole line is refused. */
+    char line[768];
+    int  n = snprintf(line, sizeof(line), "%s failure=\"%s\" %lld%09ld\n",
+		      type, failure, (long long)ts.tv_sec, ts.tv_nsec);
+    if (n > 0) {
+	PUT_LOCK()
+	put_line(line, ((size_t)n < sizeof(line)) ? (size_t)n
+						  : sizeof(line) - 1);
+	PUT_UNLOCK()
+    }
+    errno = errno_saved;
+}
+
+#endif	/* WITH_LINEPROTOCOL || WITH_DGRAM */
 
 
 /************************************************************************

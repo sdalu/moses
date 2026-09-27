@@ -769,6 +769,7 @@ make  -C build
 | `WITH_DISPLAY`      | Build [`moses_display`](#moses_display), the LVGL front panel. Off by default; needs a C++ compiler (LVGL's build enables the language even though nothing here uses it) and pulls in the `3rd/lvgl` submodule, which is a long compile on a Pi Zero. The three daemons build with just a C compiler. |
 | `WITH_DISPLAY_TESTS`| Build the [screenshot tests](#tests). Needs LVGL but no panel, so it stands alone on a machine that cannot build `moses_display` at all. |
 | `WITH_DAEMONS`      | Build the three daemons (**on** by default). Turn it off to build only what needs neither mosquitto nor M-Bus — those libraries are then not looked for either, which is what lets the tests configure on a machine that has neither. |
+| `WITH_DGRAM`        | Also send each reading to a local unix datagram socket (`MOSES_DGRAM_PATH`, default `/run/moses.sock`), in the same [line protocol](#line-protocol-output) written to stdout. For a consumer on **this** machine, which would otherwise cross the network twice to reach a broker on another one — and be cut off entirely when that network is. Non-blocking and silent about every error: nobody listening is the normal state, not a fault, and nothing may hold up a daemon counting pulses or holding a valve. |
 | `WITH_MQTT`         | Speak MQTT (**on** by default). Off compiles the MQTT half of `src/common.c` out and drops libmosquitto from the link entirely, for a machine that wants nothing but [line protocol](#line-protocol-output) on stdout. `moses_watermeter` and `moses_sensors` still do their job; `moses_breaker` is **not built** — `state/set` is the only way to command the valve, so without a broker it would open a GPIO and wait forever, which is worse than absent because it looks like a valve controller. `WITH_DISPLAY` is refused outright, being a subscriber and nothing else. |
 | `WITH_TESTS`        | Build the unit tests (off by default, so a normal build skips them); see [Tests](#tests). |
 | `MQTT_TOPIC_PREFIX` | Change the default prefix applied to topic (`water-breaker`)|
@@ -777,6 +778,33 @@ The three resulting executables (`moses_watermeter`, `moses_breaker`,
 `moses_sensors`) are produced under `bin/`, joined by `moses_display`
 when `WITH_DISPLAY` is on. Their command-line options and MQTT topics
 are documented in the [Software](#software) section.
+
+Flavours
+--------
+
+`FLAVOUR` names the machine being built for, so the usual two do not
+have to be spelled out knob by knob:
+
+~~~sh
+make build                      # device: the Pi the hardware is on
+make build FLAVOUR=viewer       # viewer: a window, anywhere else
+~~~
+
+| FLAVOUR  | `WITH_DAEMONS` | `WITH_DISPLAY` | `DISPLAY_BACKEND` |
+|----------|----------------|----------------|-------------------|
+| `device` | yes            | no             | automation-hat-mini |
+| `viewer` | no             | yes            | sdl               |
+
+`device` is the default and is exactly what the individual knobs
+defaulted to before, so a bare `make build` is unchanged. `viewer`
+builds `moses_display` alone against SDL — no daemons, so neither
+mosquitto's hardware nor M-Bus need exist on that machine, and it
+watches the same broker from wherever it runs.
+
+A flavour only supplies *defaults*: any knob set on the command line
+still wins, so `make build FLAVOUR=viewer WITH_LOG=yes` is both. `make
+flavours` prints the table above with the current values.
+
 
 Tests
 -----

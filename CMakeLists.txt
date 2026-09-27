@@ -33,6 +33,10 @@ option(WITH_ANALYZER "Run the GCC static analyzer on moses code (CI)"      OFF)
 option(WITH_TESTS    "Build the unit tests"                                OFF)
 option(WITH_DAEMONS  "Build the three daemons (needs mosquitto, and M-Bus)" ON)
 option(WITH_MQTT     "Speak MQTT (off drops libmosquitto entirely)"        ON)
+option(WITH_DGRAM    "Also send each reading to a local unix datagram socket" OFF)
+# sockaddr_un.sun_path is 104 bytes on the BSDs and 108 on Linux, and a
+# path too long to fit is refused rather than truncated -- keep it short.
+set(MOSES_DGRAM_PATH "/run/moses.sock" CACHE STRING "Local datagram socket")
 set(MQTT_TOPIC_PREFIX "water-breaker" CACHE STRING "Default prefix for topics")
 
 
@@ -55,6 +59,10 @@ endif()
 add_compile_definitions(MQTT_TOPIC_PREFIX="${MQTT_TOPIC_PREFIX}")
 if (WITH_MQTT)
     add_compile_definitions(WITH_MQTT)
+endif()
+if (WITH_DGRAM)
+    add_compile_definitions(WITH_DGRAM)
+    add_compile_definitions(MOSES_DGRAM_PATH="${MOSES_DGRAM_PATH}")
 endif()
 
 
