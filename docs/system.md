@@ -34,7 +34,7 @@ Nut
 `upsmon` runs [`scripts/nut-notify`](../scripts/nut-notify) on each
 event. That publishes the event on `ups/<ups>/notify/<type>` and the
 current state, retained, on `ups/<ups>/state`, which is what
-`moses_display` reads without `--ups`. Replace `pijuice` and `secret`
+`moses_display` reads with `--source=mqtt` and no `--ups`. Replace `pijuice` and `secret`
 below with your own UPS name and password.
 
 ~~~sh

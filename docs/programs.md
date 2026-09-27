@@ -208,7 +208,7 @@ Environment
 
 | Variable            | Description                                 |
 | ------------------- | ------------------------------------------- |
-| `MQTT_HOST`         | Broker hostname or address (**required**)   |
+| `MQTT_HOST`         | Broker hostname or address; unset, no MQTT  |
 | `MQTT_PORT`         | Port (default 1883)                         |
 | `MQTT_USERNAME`     | Username                                    |
 | `MQTT_PASSWORD`     | Password                                    |

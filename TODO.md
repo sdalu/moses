@@ -75,12 +75,11 @@ build and the gpio-mockup tests passing on a Raspberry Pi (armv7, Linux
 build time instead of letting it be looked up, since bitters guards the
 macro with `#ifndef` for exactly that.
 
-What has *not* happened is building this tree against it on Linux --
-moses has been down since 2026-09-26. Nothing here needed changing to
-absorb it (the two `bitters_gpio_cfg_t` in `src/display/backend/` use
+This tree builds against it: the gate passes on the Pi with the three
+daemons compiled under GCC `-Werror`, and nothing here needed changing
+-- the two `bitters_gpio_cfg_t` in `src/display/backend/` use
 designated initializers, so the appended `active_low` zero-initialises
-to "not active low"), but that is a reading of the headers and not a
-compile. Do the gate before starting on `src/gpio.c` itself.
+to "not active low", which is the right default.
 
 Then: everything else the two daemons ask of GPIO is already in bitters
 -- direction, default value, label, open-drain/open-source, bias, edge
@@ -89,19 +88,14 @@ selection, debounce, and the irq wait/poll/callback trio -- so
 `GPIO_V2_LINE_FLAG_*` to `BITTERS_GPIO_*`, and `moses_breaker` gets Pi 5
 correctness from the library instead of from its own copy of it.
 
-Nothing here has to change to *absorb* the new bitters: the only two
-`bitters_gpio_cfg_t` in this tree (`src/display/backend/`) use
-designated initializers, so the appended field zero-initialises to "not
-active low", which is the right default.
-
 
 Deployment / hardening
 ----------------------
 
-- [ ] systemd unit templates, and install the helper scripts. `make
-      install` puts the four binaries under `$(BINDIR)`, but
-      `scripts/loop-runner` and `scripts/nut-notify` are not installed
-      and nothing has a unit.
+- [ ] Service definitions. `make install` puts the binaries and the two
+      helper scripts under `$(BINDIR)`, and the bus policy under
+      `$(DBUSDIR)`, but nothing starts them: no systemd unit, and no
+      init script for a machine without systemd.
 - [ ] Run as a dedicated non-root user: RT scheduling + mlockall + GPIO only
       need `CAP_SYS_NICE` + `CAP_IPC_LOCK` + the `gpio` group, granted via
       systemd `AmbientCapabilities`.

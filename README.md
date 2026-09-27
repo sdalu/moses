@@ -58,14 +58,17 @@ How it fits together
    <prefix>/state      --> | moses_display  | --> LCD
    <prefix>/sensors    --> |                |
    <prefix>/availability/* +----------------+
-                           ^        ^
-   ups/+/notify/* ---------+        +----- upsd on localhost:3493
-                                           (only with --ups)
+                           ^      ^      ^
+   ups/+/state ------------+      |      +----- upsd on localhost:3493
+                                  |             (--ups, or local)
+   moses.* on the system bus -----+
 ~~~
 
 `<prefix>` is `MQTT_TOPIC_PREFIX` (default `water-breaker`). The same
 readings can also go to stdout and to the system D-Bus; see
-[docs/interfaces.md](docs/interfaces.md).
+[docs/interfaces.md](docs/interfaces.md). `moses_display` reads one or
+the other: the broker, or with `--source=local` the bus and `upsd` and
+no broker at all ([docs/programs.md](docs/programs.md#moses_display)).
 
 
 Quick start

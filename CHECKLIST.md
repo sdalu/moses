@@ -41,9 +41,14 @@ is sometimes that the checker is wrong rather than the file.
       that, compile the one translation unit with the flags a real build
       used, which is a genuine compile and not a syntax check:
 
-          cc $(sed -n 's/^C_\(DEFINES\|INCLUDES\|FLAGS\) = //p' \
-                  build/CMakeFiles/moses_display.dir/flags.make) \
-             -Werror -c src/display/backend/<file>.c -o /tmp/check.o
+          flags=$(sed -n -e 's/^C_DEFINES = //p' -e 's/^C_INCLUDES = //p' \
+                         -e 's/^C_FLAGS = //p' \
+                         build/CMakeFiles/moses_display.dir/flags.make |
+                  tr '\n' ' ')
+          eval "cc $flags -Werror -c src/display/backend/<file>.c -o /tmp/check.o"
+
+      One `-e` per variable, because BSD sed has no `\|`; `eval`,
+      because `flags.make` escapes its quotes (`\"water-breaker\"`).
 
       Compile the unmodified file the same way first; a warning the
       baseline already had is not this round's.

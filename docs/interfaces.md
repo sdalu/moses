@@ -26,8 +26,8 @@ Relative to `MQTT_TOPIC_PREFIX`:
 
 `availability` is per daemon (`watermeter`, `breaker`, `sensors`), so
 one daemon's retained `offline` cannot mask the others'.
-`moses_display` subscribes to all of these but `error` and publishes
-nothing. The UPS topics, `ups/<ups>/…`, are outside the prefix; see
+`moses_display`, with `--source=mqtt`, subscribes to all of these but
+`error`; it publishes nothing. The UPS topics, `ups/<ups>/…`, are outside the prefix; see
 [system.md](system.md#nut).
 
 
