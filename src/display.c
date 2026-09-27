@@ -139,7 +139,7 @@ on_tick(lv_timer_t *timer)
  * screen is about: the first SDL build of it sat on a workstation
  * reporting `hyperion` above moses's water meter. The hostname becomes
  * the right answer again only for a source that is local by
- * construction -- the unix datagram socket of TODO, *A local socket*,
+ * construction -- the unix datagram socket of src/display/source-unix.c,
  * where the producer is necessarily this machine.
  */
 static const char *
@@ -280,6 +280,19 @@ main(int argc, char *argv[])
 			  ! d->use_upsd) < 0)
 	DIE(2, "failed to subscribe to MQTT");
 
+#ifdef WITH_DGRAM
+    /* The local socket, carrying the same readings as MQTT without
+     * leaving the machine. Fatal when it cannot be bound: the path is
+     * compiled in or given in the environment, so a failure here is a
+     * misconfiguration rather than a condition to carry on through --
+     * and carrying on would leave a display that looks like it is
+     * reading the socket and is not. What it cannot do is replace the
+     * broker: it has no retained state, so MQTT is still what fills the
+     * panel in at startup. See src/display/source-unix.c. */
+    if (source_unix_start() < 0)
+	DIE(2, "failed to bind the local datagram socket");
+#endif
+
     /* Unlike the daemons this one does clean up: the backlight is a
      * lit panel left behind, not a valve, so there is something worth
      * turning off and no last will to suppress by doing it. */
@@ -296,6 +309,9 @@ main(int argc, char *argv[])
 	usleep(idle * 1000);
     }
 
+#ifdef WITH_DGRAM
+    source_unix_stop();
+#endif
     backend_deinit();
     return EXIT_SUCCESS;
 }

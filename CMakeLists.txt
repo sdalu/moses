@@ -46,6 +46,24 @@ set(MQTT_TOPIC_PREFIX "water-breaker" CACHE STRING "Default prefix for topics")
 # path too long to fit is refused rather than truncated -- keep it short.
 set(MOSES_DGRAM_PATH "/run/moses.sock" CACHE STRING "Local datagram socket")
 
+# Which GPIO controller the Raspberry Pi pins are on, when it is worth
+# saying rather than letting bitters look.
+#
+# Left empty, BITTERS_RPI_GPIO_CHIP is bitters' own default: the three
+# pinctrl labels tried in order -- pinctrl-rp1 (Pi 5), pinctrl-bcm2711
+# (Pi 4), pinctrl-bcm2835 (Pi 1-3 and the Zero) -- with the old
+# "gpiochip0" device name last. That is resolved when a pin is first
+# enabled, by asking each chip for its label, and it is what makes one
+# binary work on any of them.
+#
+# Set to one of those labels (or to a /dev name) and that search does not
+# happen: the build says which controller this machine has and only that
+# one is opened. Worth it where the target is known and fixed, which is
+# what moses is -- one Pi Zero, one HAT. bitters guards the macro with
+# #ifndef exactly so a build can do this.
+set(RPI_GPIO_CHIP "" CACHE STRING
+    "Pin the Pi's GPIO controller (e.g. pinctrl-bcm2835); empty = let bitters look")
+
 
 #
 # What gets built.
@@ -100,6 +118,17 @@ endif()
 if (WITH_DGRAM)
     add_compile_definitions(WITH_DGRAM)
     add_compile_definitions(MOSES_DGRAM_PATH="${MOSES_DGRAM_PATH}")
+endif()
+
+
+# Pinning the Pi's GPIO controller, when RPI_GPIO_CHIP says which.
+#
+# BITTERS_RPI_BCM_GPIO_CHIP is the macro bitters guards with #ifndef, and
+# BITTERS_RPI_GPIO_CHIP is defined from it -- so this is the one to set,
+# and setting it replaces the search list rather than adding to it.
+if (RPI_GPIO_CHIP)
+    add_compile_definitions(BITTERS_RPI_BCM_GPIO_CHIP="${RPI_GPIO_CHIP}")
+    message(STATUS "GPIO controller pinned to ${RPI_GPIO_CHIP}")
 endif()
 
 
@@ -356,6 +385,23 @@ if (WITH_TESTS)
     target_include_directories(test_payload PRIVATE src/display)
     target_link_libraries(test_payload PRIVATE m)
     add_test(NAME payload COMMAND test_payload)
+
+    # The line protocol the local datagram socket carries, read back.
+    # Built whatever WITH_DGRAM says: lineproto.c is deliberately free of
+    # the socket -- and of mosquitto, LVGL and anything Linux-only -- so
+    # the parser that decides what figure reaches the panel can be
+    # checked on any machine, which is the same reason test_payload and
+    # test_breaker_state exist. It takes breaker_state.c because a
+    # `state` field is read with the very parser moses_breaker reads its
+    # own commands with.
+    add_executable(test_lineproto
+        test/test_lineproto.c
+        src/display/lineproto.c
+        src/display/payload.c
+        src/breaker_state.c)
+    target_include_directories(test_lineproto PRIVATE src src/display)
+    target_link_libraries(test_lineproto PRIVATE m)
+    add_test(NAME lineproto COMMAND test_lineproto)
 endif()
 
 
@@ -438,6 +484,15 @@ if (WITH_DISPLAY)
         src/display/source-mqtt.c
         src/display/source-nut.c
         src/display/ups_estimate.c)
+
+    # The local socket's consuming half. Only under WITH_DGRAM, which is
+    # also what puts the sending half into the daemons -- there is no
+    # point binding a socket nothing writes to.
+    if (WITH_DGRAM)
+        target_sources(moses_display PRIVATE
+            src/display/lineproto.c
+            src/display/source-unix.c)
+    endif()
     target_include_directories(moses_display PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/display
         ${CMAKE_CURRENT_SOURCE_DIR}/src/display/backend)

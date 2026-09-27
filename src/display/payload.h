@@ -10,8 +10,8 @@
  * that is what arrives: mosquitto hands over a buffer that is not
  * NUL-terminated, and a unix datagram would do the same. Nothing here
  * includes mosquitto, LVGL, or a header that is Linux-only, which is
- * what lets the datagram source of TODO, *A local socket*, reuse them
- * unchanged.
+ * what lets src/display/source-unix.c, which reads the local datagram
+ * socket, reuse them unchanged.
  *
  * All of them refuse rather than guess. A payload that is not exactly
  * what was expected returns false and leaves its output alone, because

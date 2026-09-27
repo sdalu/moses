@@ -45,69 +45,6 @@ MQTT / integration
 - [ ] `nut-notify` hardcodes the `ups/...` topic and ignores
       `MQTT_TOPIC_PREFIX`, unlike the rest of the system.
 
-A local socket, beside MQTT
----------------------------
-
-**The producing half is built** (`WITH_DGRAM`, `MOSES_DGRAM_PATH`,
-default `/run/moses.sock`); the consuming half is not. What remains is
-`src/display/source-unix.c`: bind the socket, parse what arrives, and
-call the same `model_set_*()` as the other two sources -- which is what
-`src/display/model.h` and `source.h` were shaped for, so nothing in the
-model or the dashboard changes.
-
-The socket carries the **line protocol** the daemons emit under
-`WITH_LINEPROTOCOL`, not the `<topic> <payload>` first sketched for it.
-`PUT_DATA` and `PUT_FAIL` are already at every reading, so they gained a
-second sink instead of the daemons gaining a third call, and a line
-carries a real timestamp, which an MQTT payload does not. It is also a
-format other things read: Telegraf's `socket_listener` ingests it as it
-stands.
-
-That decides the shape of what is left. The measurement and field names
-(`watermeter index=`, `environment temperature=`) are a different
-vocabulary from the MQTT topics, so the dispatch is its own -- though
-`payload_double()` and friends still parse the values, and they already
-take a pointer and a length rather than a mosquitto message, precisely
-because that is the shape a datagram arrives in. `test/test_payload.c`
-covers them.
-
-**The consumer binds.** `moses_display` creates and owns the socket;
-producers `sendto()` it and never care whether it exists. One consumer is
-all moses needs; if a second ever appears, the extension is a directory
-of sockets that producers write to each of, which changes nothing here.
-
-**The name on the panel.** Over MQTT it is the last segment of
-`MQTT_TOPIC_PREFIX`, because that is what identifies an installation on a
-shared broker. A datagram socket has no such prefix and no such ambiguity
--- whatever writes it is on this machine -- so there the hostname is the
-right name to show, and `device_name()` in `src/display.c` is the one
-place that would learn to say so.
-
-**What the socket cannot carry, and the consumer has to live with:**
-
-- *Retention.* MQTT's retained `index`, `state` and `availability` are
-  why the panel fills in within a moment of starting. A datagram socket
-  has no memory: a display started between reports shows dashes until the
-  next one, up to a minute. Either accept that, or give producers a way
-  to be asked -- which a one-way socket cannot do without a second one
-  going the other way.
-- *The last will.* MQTT's LWT is how the display learns a daemon died
-  rather than merely went quiet. Over the socket there is no such signal,
-  so liveness degrades to the `--stale` timeout alone: it degrades rather
-  than breaks, but it stops being able to tell "dead" from "slow".
-
-Both are reasons to keep MQTT as the primary path and treat the socket as
-a local shortcut, not reasons to skip it. The broker is not on moses --
-it is another host on the LAN -- so today the index `moses_watermeter`
-reads travels over Wi-Fi to that machine and back to reach a panel ten
-centimetres away, and if the broker or the Wi-Fi is down the panel goes
-blank while every daemon behind it is working perfectly. That is
-precisely the moment someone walks up to it.
-
-**Effort:** perhaps 60 lines, mostly a `recvfrom()` loop over parsers
-that already exist.
-
-
 Delete src/gpio.c, once bitters can replace it
 -----------------------------------------------
 
@@ -123,7 +60,7 @@ two hardware daemons need:
 - there was no equivalent of `GPIO_V2_LINE_FLAG_ACTIVE_LOW`, which
   `moses_breaker --active=low` needs to match how a relay is wired.
 
-Both are now closed upstream (unreleased at the time of writing):
+Both are now closed upstream, and vendored here:
 `BITTERS_RPI_GPIO_CHIP` expands to
 `"pinctrl-rp1|pinctrl-bcm2711|pinctrl-bcm2835|gpiochip0"` -- a list of
 chip labels or device names tried in order and resolved when the pin is
@@ -131,12 +68,19 @@ enabled -- and `bitters_gpio_cfg_t` has gained an `active_low` field.
 That is the same three labels `rpi_gpio_chip()` matches here, with the
 old device name kept as a fallback.
 
-**Wait for a released, Linux-tested bitters before acting.** As of
-writing those changes are uncommitted upstream and have only had a
-syntax check, because that machine is FreeBSD; the gpio-mockup tests
-still have to run on Linux. The cfg struct grew, so it warrants a minor
-bump (1.3.0) and the vendored submodule here has to move to it --
-CLAUDE.local.md records 1.2.0 as what the gate is green on.
+**That wait is over, and the submodule has moved**: `3rd/bitters` is at
+`f402d03`, 1.3.0, whose own commit records `check`, `tests`, a `-Werror`
+build and the gpio-mockup tests passing on a Raspberry Pi (armv7, Linux
+6.18). `RPI_GPIO_CHIP` in `CMakeLists.txt` can now pin the controller at
+build time instead of letting it be looked up, since bitters guards the
+macro with `#ifndef` for exactly that.
+
+What has *not* happened is building this tree against it on Linux --
+moses has been down since 2026-09-26. Nothing here needed changing to
+absorb it (the two `bitters_gpio_cfg_t` in `src/display/backend/` use
+designated initializers, so the appended `active_low` zero-initialises
+to "not active low"), but that is a reading of the headers and not a
+compile. Do the gate before starting on `src/gpio.c` itself.
 
 Then: everything else the two daemons ask of GPIO is already in bitters
 -- direction, default value, label, open-drain/open-source, bias, edge

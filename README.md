@@ -578,7 +578,8 @@ mbus-serial-scan -b 2400 /dev/ttyAMA0
 
 A read-only front panel on the 0.96" 160x80 LCD the Automation HAT Mini
 carries (see [LCD](#lcd)). It subscribes to what the other daemons
-publish, asks `upsd` about the battery, and draws:
+publish, asks `upsd` about the battery, optionally reads the same
+readings off a [local socket](#a-local-socket-beside-mqtt), and draws:
 
 ~~~
 +--------------------------------------+
@@ -607,7 +608,7 @@ the display is whichever one someone opened a window on, which is not
 what the screen is about — the first SDL build sat on a workstation
 reporting `hyperion` above moses's water meter. The hostname becomes
 the right answer again only for a source that is local by construction,
-which is what the [local socket](TODO.md) would be.
+which is what the [local socket](#a-local-socket-beside-mqtt) is.
 
 It is dark on purpose: the panel sits in a technical room where a white
 screen at full backlight is a lamp, black is the one thing an LCD
@@ -770,7 +771,8 @@ built, one option per program, and the last is for diagnosis.
 |---------------------|-------------------------------------------------------------|
 | `WITH_MQTT`         | Speak MQTT (**on** by default). Off compiles the MQTT half of `src/common.c` out and drops libmosquitto from the link entirely, for a machine that wants nothing but [line protocol](#line-protocol-output) on stdout. `moses_watermeter` and `moses_sensors` still do their job; `moses_breaker` is **not built** — `state/set` is the only way to command the valve, so without a broker it would open a GPIO and wait forever, which is worse than absent because it looks like a valve controller. `WITH_DISPLAY` is refused outright, being a subscriber and nothing else. |
 | `WITH_LINEPROTOCOL` | Also write each reading to stdout as one line of [InfluxDB line protocol](https://docs.influxdata.com/influxdb/latest/reference/syntax/line-protocol/) — `<measurement> <fields> <nanosecond-timestamp>` — for piping into a time-series database. Telegraf, VictoriaMetrics and QuestDB read the same format |
-| `WITH_DGRAM`        | Also send each reading to a local unix datagram socket (`MOSES_DGRAM_PATH`, default `/run/moses.sock`), in the same [line protocol](#line-protocol-output) written to stdout. For a consumer on **this** machine, which would otherwise cross the network twice to reach a broker on another one — and be cut off entirely when that network is. Non-blocking and silent about every error: nobody listening is the normal state, not a fault, and nothing may hold up a daemon counting pulses or holding a valve. |
+| `WITH_DGRAM`        | Also send each reading to a local unix datagram socket (`MOSES_DGRAM_PATH`), in the same [line protocol](#line-protocol-output) written to stdout, **and** have `moses_display` read it. For a consumer on **this** machine, which would otherwise cross the network twice to reach a broker on another one — and be cut off entirely when that network is. Sending is non-blocking and silent about every error: nobody listening is the normal state, not a fault, and nothing may hold up a daemon counting pulses or holding a valve. |
+| `MOSES_DGRAM_PATH`  | Where that socket is. Defaults to `/run/moses.sock` on Linux and `/var/run/moses.sock` elsewhere, because only one of those directories exists on each — `make` picks by looking. Keep it short: `sockaddr_un.sun_path` is 104 bytes on the BSDs and a path too long to fit is refused rather than truncated. |
 | `MQTT_TOPIC_PREFIX` | Change the default prefix applied to topic (`water-breaker`)|
 | `WITH_WATERMETER`   | Build `moses_watermeter` (**on** by default). The only program that wants M-Bus, so turning it off is what lets the tree configure where libmbus is not installed |
 | `WITH_BREAKER`      | Build `moses_breaker` (**on** by default). `state/set` is the only way to *command* the valve, so built without `WITH_MQTT` it cannot be told to shut — it still holds the line, reports its state to whatever sinks are on, and fails the valve open when it stops |
@@ -778,6 +780,7 @@ built, one option per program, and the last is for diagnosis.
 | `WITH_DISPLAY`      | Build [`moses_display`](#moses_display), the LVGL front panel. Off by default; needs a C++ compiler (LVGL's build enables the language even though nothing here uses it) and pulls in the `3rd/lvgl` submodule, which is a long compile on a Pi Zero. The three daemons build with just a C compiler. |
 | `WITH_DISPLAY_TESTS`| Build the [screenshot tests](#tests). Needs LVGL but no panel, so it stands alone on a machine that cannot build `moses_display` at all. |
 | `WITH_TESTS`        | Build the unit tests (off by default, so a normal build skips them); see [Tests](#tests). |
+| `RPI_GPIO_CHIP`     | Pin the Raspberry Pi's GPIO controller instead of letting bitters find it. Empty by default, which leaves `BITTERS_RPI_GPIO_CHIP` as its list of chip labels — `pinctrl-rp1` (Pi 5), `pinctrl-bcm2711` (Pi 4), `pinctrl-bcm2835` (Pi 1–3 and the Zero), then `gpiochip0` — tried in order and resolved the first time a pin is enabled, which is what makes one binary work on any of them. Naming one skips that search, and is worth it where the board is known and fixed. |
 | `WITH_LOG`          | Enable log messages on stderr                               |
 
 The three resulting executables (`moses_watermeter`, `moses_breaker`,
@@ -854,6 +857,61 @@ cmake -B build-nohw -DWITH_TESTS=ON -DWITH_DISPLAY_TESTS=ON \
 make  -C build-nohw
 ctest --test-dir build-nohw --output-on-failure
 ~~~
+
+
+### A local socket, beside MQTT
+
+Built under [`WITH_DGRAM`](#build-options), which does two things: the
+daemons send every reading to a unix datagram socket as well as to the
+broker, and `moses_display` binds that socket and reads it.
+
+It exists because **the broker is not on this machine**. Without it, the
+index `moses_watermeter` reads travels over the network to another host
+and back again to reach a panel ten centimetres away — and when that
+network is down the panel goes blank while every daemon behind it is
+working perfectly. That is precisely the moment somebody walks up to it.
+
+What travels is the same [line protocol](#line-protocol-output) the
+stdout sink writes, one datagram per reading, without the trailing
+newline. Not a second format invented for the occasion: `PUT_DATA` and
+`PUT_FAIL` are already at every reading, so they gained a sink rather
+than the daemons gaining a call, a line carries a real timestamp where
+an MQTT payload does not, and other things read it as it stands —
+Telegraf's `socket_listener` among them.
+
+The consumer binds and the producers only ever send, so a daemon never
+waits on a display: sending is non-blocking, and `ENOENT` for no socket,
+`ECONNREFUSED` for one nobody has open and `EAGAIN` for a consumer not
+keeping up are all simply "nobody is listening", which is the ordinary
+state of the machine. `moses_display` refuses to start if the path is an
+existing non-socket file, or if another consumer is already bound to it
+— either would otherwise end with one of the two receiving nothing and
+neither saying so. The socket is created mode 0660, so a producer running
+as another user in a shared group can write to it and the world cannot.
+
+**Two things it cannot carry**, which is why MQTT stays the primary path
+rather than being replaced:
+
+- *Retention.* MQTT's retained `index`, `state` and `availability` are
+  why the panel fills in within a moment of starting. A datagram socket
+  has no memory: a display started between reports shows dashes until the
+  next one, which can be a minute.
+- *The last will.* MQTT's LWT is how the display learns a daemon died
+  rather than merely went quiet. There is no such signal here, so the
+  availability marks are deliberately left untouched by this source — a
+  datagram proves a daemon was alive a moment ago, but nothing would ever
+  clear the mark again, and a panel claiming "online" about a process
+  that died an hour ago is worse than one that does not claim to know.
+  Staleness covers it instead: every figure carries when it arrived.
+
+The UPS is not on this wire at all. `nut-notify` publishes to MQTT and
+`upsd` is asked directly, so the battery comes from one of those two
+however this is configured.
+
+Parsing is `src/display/lineproto.c`, kept apart from the socket and
+tested by `test/test_lineproto.c` — it decides what figure reaches the
+panel, which is worth being able to check without a socket, a daemon or
+a Raspberry Pi. `src/display/source-unix.c` is the socket.
 
 
 ### Screenshot tests

@@ -78,7 +78,21 @@ WITH_ANALYZER	?= no
 
 DISPLAY_BACKEND	?= $(FLAVOUR_$(FLAVOUR)_BACKEND)
 MQTT_TOPIC_PREFIX ?= water-breaker
-MOSES_DGRAM_PATH ?= /run/moses.sock
+
+# The socket's directory is not the same everywhere: Linux has /run,
+# where FreeBSD has only /var/run, and a path that does not exist is a
+# bind() that fails at startup rather than a warning at build time. Asked
+# of the filesystem rather than of `uname`, because what matters is which
+# directory is actually there -- and sockaddr_un.sun_path is 104 bytes on
+# the BSDs, so a long path is refused outright and short beats tidy.
+RUNDIR		!= if [ -d /run ]; then echo /run; else echo /var/run; fi
+MOSES_DGRAM_PATH ?= $(RUNDIR)/moses.sock
+
+# Empty lets bitters find the Pi's GPIO controller by asking each chip
+# for its label, which is what makes one binary work on a Zero and a Pi
+# 5 alike. Naming one -- pinctrl-bcm2835 for a Zero, pinctrl-bcm2711 for
+# a Pi 4, pinctrl-rp1 for a Pi 5 -- skips that search.
+RPI_GPIO_CHIP	?=
 
 ON_yes		= ON
 ON_no		= OFF
@@ -102,6 +116,7 @@ CMAKEFLAGS	+= -DWITH_DISPLAY=$(ON_$(WITH_DISPLAY))
 CMAKEFLAGS	+= -DWITH_DISPLAY_TESTS=$(ON_$(WITH_DISPLAY_TESTS))
 CMAKEFLAGS	+= -DWITH_TESTS=$(ON_$(WITH_TESTS))
 CMAKEFLAGS	+= -DDISPLAY_BACKEND=$(DISPLAY_BACKEND)
+CMAKEFLAGS	+= -DRPI_GPIO_CHIP=$(RPI_GPIO_CHIP)
 CMAKEFLAGS	+= -DWITH_LOG=$(ON_$(WITH_LOG))
 CMAKEFLAGS	+= -DWITH_WERROR=$(ON_$(WITH_WERROR))
 CMAKEFLAGS	+= -DWITH_ANALYZER=$(ON_$(WITH_ANALYZER))
@@ -172,7 +187,9 @@ help:						## show this help (the default)
 	    PREFIX		'$(PREFIX)  (install goes to $(BINDIR))'      \
 	    DESTDIR		'$(DESTDIR)  (staging prefix for packaging)'  \
 	    DISPLAY_BACKEND	'$(DISPLAY_BACKEND)  (one of: automation-hat-mini sdl)' \
-	    MQTT_TOPIC_PREFIX	'$(MQTT_TOPIC_PREFIX)  (compiled-in default topic prefix)'
+	    MQTT_TOPIC_PREFIX	'$(MQTT_TOPIC_PREFIX)  (compiled-in default topic prefix)' \
+	    MOSES_DGRAM_PATH	'$(MOSES_DGRAM_PATH)  (the socket, when WITH_DGRAM)' \
+	    RPI_GPIO_CHIP	'$(RPI_GPIO_CHIP)  (empty: bitters finds it by label)'
 	@echo ''
 	@echo 'Where a reading goes (yes/no, and none of them exclusive):'
 	@printf '  %-20s %-4s %s\n'					      \
@@ -369,7 +386,7 @@ options:					## every build knob, and what it defaults to
 	    'WITH_LINEPROTOCOL'	 'no'	'one line per reading on stdout' \
 	    'WITH_DGRAM'	 'no'	'the same line to a unix datagram socket' \
 	    'MQTT_TOPIC_PREFIX'	 'water-breaker'	'compiled-in topic prefix' \
-	    'MOSES_DGRAM_PATH'	 '/run/moses.sock' 'the socket it goes to'
+	    'MOSES_DGRAM_PATH'	 '$(MOSES_DGRAM_PATH)' 'the socket it goes to'
 	@echo ''
 	@echo 'What gets built:'
 	@printf '  %-20s %-4s %s\n'					\
@@ -382,7 +399,8 @@ options:					## every build knob, and what it defaults to
 	@printf '  %-20s %-20s %s\n'					\
 	    'WITH_DISPLAY'	 'no'	'moses_display, the LVGL front panel' \
 	    'WITH_DISPLAY_TESTS' 'no'	'the screenshot tests'		\
-	    'DISPLAY_BACKEND'	 'automation-hat-mini' 'or sdl, for a window'
+	    'DISPLAY_BACKEND'	 'automation-hat-mini' 'or sdl, for a window' \
+	    'RPI_GPIO_CHIP'	 '(empty)'	'pin the GPIO controller, e.g. pinctrl-bcm2835'
 	@echo ''
 	@echo 'Diagnostics:'
 	@printf '  %-20s %-4s %s\n'					\
