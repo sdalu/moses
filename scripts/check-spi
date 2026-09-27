@@ -1,0 +1,102 @@
+#!/bin/sh
+#
+# check-spi -- this machine's SPI is set up for the panel.
+#
+# Two facts about the boot configuration, neither of which the build can
+# see and both of which stop moses_display dead:
+#
+#   - The LCD's data/command line is also SPI0's MISO. Under a plain
+#     `dtparam=spi=on` the SPI controller claims MISO, MOSI and SCLK as
+#     one pin group, and the panel's request for that pin is refused.
+#   - spidev's buffer must take a frame in one transfer; the default is
+#     one page.
+#
+# Neither number is typed here. The pin comes from the backend that
+# drives it and the buffer size from the document that prescribes it, so
+# a change in either place is followed rather than contradicted.
+#
+# Linux only: both answers live in /proc/device-tree and /sys. Anywhere
+# else, and on a Linux box that is not a Raspberry Pi, there is nothing
+# to look at and the check says so rather than failing.
+#
+set -u
+
+top="${0%/*}/.."
+backend="$top/src/display/backend/rpi-automation-hat-mini.c"
+rpi_h="$top/3rd/bitters/include/bitters/rpi.h"
+hardware="$top/docs/hardware.md"
+
+config_txt="${CONFIG_TXT:-/boot/firmware/config.txt}"
+cmdline_txt="${CMDLINE_TXT:-/boot/firmware/cmdline.txt}"
+bufsiz_parm="${BUFSIZ_PARM:-/sys/module/spidev/parameters/bufsiz}"
+dt_gpio="${DT_GPIO:-/proc/device-tree/soc}"
+
+fail=0
+bad() { echo "make: check-spi: $*" >&2; fail=1; }
+
+#
+# What the panel needs, read out of the tree rather than restated.
+#
+dc_macro=$(awk '/^static bitters_gpio_pin_t lcd_dc =/ { getline; print }' \
+	       "$backend" 2>/dev/null |
+	   sed -n 's/.*\(BITTERS_RPI_P1_[0-9]*\).*/\1/p')
+[ -n "$dc_macro" ] ||
+    bad "cannot find lcd_dc's pin in ${backend#"$top"/}"
+
+if [ -n "$dc_macro" ]; then
+    bcm=$(sed -n "s/^#define[[:space:]][[:space:]]*${dc_macro}[[:space:]][[:space:]]*\\(BITTERS_RPI_BCM_GPIO_[0-9]*\\).*/\\1/p" "$rpi_h" 2>/dev/null)
+    dc_pin=$(sed -n "s/^#define[[:space:]][[:space:]]*${bcm}[[:space:]][[:space:]]*\\([0-9][0-9]*\\).*/\\1/p" "$rpi_h" 2>/dev/null)
+    [ -n "$dc_pin" ] ||
+	bad "cannot resolve $dc_macro to a GPIO number in ${rpi_h#"$top"/}"
+fi
+
+want_bufsiz=$(sed -n 's/^spidev\.bufsiz=\([0-9][0-9]*\)$/\1/p' "$hardware" 2>/dev/null |
+	      head -1)
+[ -n "$want_bufsiz" ] ||
+    bad "cannot find the wanted spidev.bufsiz in ${hardware#"$top"/}"
+
+[ "$fail" -eq 0 ] || exit 1
+
+#
+# SPI0 must leave the data/command pin alone.
+#
+# The property is a list of big-endian 32-bit words. Reading the last
+# byte of each is enough and needs no `od --endian`, which is GNU-only:
+# a Raspberry Pi has fewer than 256 GPIO lines.
+#
+pins_node=$(set -- "$dt_gpio"/gpio@*/spi0_pins/brcm,pins; echo "$1")
+if [ ! -r "$pins_node" ]; then
+    echo "make: check-spi: no SPI0 in the device tree, skipped" >&2
+    exit 0
+fi
+
+pins=$(od -An -tu1 -v "$pins_node" | tr -s ' ' '\n' | sed '/^$/d' |
+       awk 'NR % 4 == 0 { printf "%s ", $1 }')
+case " $pins" in
+    *" $dc_pin "*)
+	bad "SPI0 claims GPIO $dc_pin, which the LCD drives as its" \
+	    "data/command line (pins: $pins)"
+	bad "add 'dtoverlay=spi0-2cs,no_miso' to $config_txt and reboot" ;;
+    *)
+	grep -Eq '^[[:space:]]*dtoverlay=spi0-.*[,[:space:]]no_miso' "$config_txt" \
+	     2>/dev/null ||
+	    bad "GPIO $dc_pin is free now, but $config_txt has no no_miso:" \
+		"the next reboot gives it back to SPI0" ;;
+esac
+
+#
+# A frame in one transfer.
+#
+if [ ! -r "$bufsiz_parm" ]; then
+    bad "spidev is not loaded ($bufsiz_parm is not there)"
+else
+    have=$(cat "$bufsiz_parm")
+    if [ "$have" -lt "$want_bufsiz" ]; then
+	bad "spidev.bufsiz is $have, and the panel wants $want_bufsiz"
+    elif ! grep -q "spidev\.bufsiz=$have" "$cmdline_txt" 2>/dev/null; then
+	bad "spidev.bufsiz is $have, but $cmdline_txt does not ask for it:" \
+	    "the next reboot drops it"
+    fi
+fi
+
+exit "$fail"

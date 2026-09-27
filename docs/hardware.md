@@ -128,6 +128,10 @@ gpio=25=op,dl
 `no_miso` keeps both chip selects and gives up only the pin the ST7735
 never drives -- it is write-only, and nothing reads back from it.
 
+`make check-spi` on the Pi checks both of these, reading the pin out of
+the backend and the buffer size out of this page, so it also catches a
+setting that is right now and will not survive the next reboot.
+
 Without it `moses_display` stops at *"cannot claim the LCD data/command
 pin"* and the kernel logs, in `dmesg` and nowhere else:
 

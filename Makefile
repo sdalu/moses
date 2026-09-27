@@ -130,7 +130,7 @@ CMAKEFLAGS	+= -DWITH_LOG=$(ON_$(WITH_LOG))
 CMAKEFLAGS	+= -DWITH_WERROR=$(ON_$(WITH_WERROR))
 CMAKEFLAGS	+= -DWITH_ANALYZER=$(ON_$(WITH_ANALYZER))
 
-HELPERS		= loop-runner nut-notify
+HELPERS		= loop-runner nut-notify check-spi
 
 # What `install` puts down is what this configuration actually built,
 # not whatever happens to be lying in bin/ from an earlier run. Keyed by
@@ -167,7 +167,8 @@ INSTALL_FILES	= $(METER_$(WITH_WATERMETER)) $(VALVE_$(WITH_BREAKER))	\
 INSTALLED	= moses_watermeter moses_breaker moses_sensors moses_display
 INSTALLED	+= loop-runner nut-notify
 
-.PHONY: help all check check-flavour check-submodules check-shell build \
+.PHONY: help all check check-flavour check-submodules check-shell \
+	check-spi build \
 	tests tests-display tests-refs tests-nohw \
 	flavours options features clean distclean install uninstall
 
@@ -278,6 +279,16 @@ check-shell:					## the helper scripts pass shellcheck
 	else								\
 	    echo 'make: shellcheck is not installed, skipped' >&2;	\
 	fi
+
+# Not a prerequisite of `check`, and that is the point: check asks
+# whether this tree is fit to build and has to answer on a workstation,
+# while this asks whether the machine in front of you is wired and booted
+# for the panel. Run it on the Pi, where it is the difference between a
+# display that comes up and one that stops at "cannot claim the LCD
+# data/command pin". It skips where there is no SPI0 to look at, so it is
+# harmless to run anywhere.
+check-spi:					## the Pi's SPI leaves the panel its pins; check does not run it
+	@sh scripts/check-spi
 
 
 #

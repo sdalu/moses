@@ -47,6 +47,12 @@ is sometimes that the checker is wrong rather than the file.
 
       Compile the unmodified file the same way first; a warning the
       baseline already had is not this round's.
+- [ ] `make check-spi` **on the Pi** -- **if this round touched the
+      panel's pins, `backend/rpi-automation-hat-mini.c`, or what the boot
+      configuration has to provide.** It reads the pin out of the backend
+      and the buffer size out of docs/hardware.md, so it fails when the
+      code and the machine disagree. `check` does not run it: that one has
+      to answer on a workstation.
 - [ ] `make tests WITH_WERROR=yes` -- CI builds this way, and the Pi's
       GCC is stricter than a clang workstation. A new warning is a
       failure here, not a note.
