@@ -105,30 +105,44 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 add_compile_options(-Wall -Wextra -Wpedantic -Wformat-security)
 add_compile_definitions(_GNU_SOURCE)
 
+#
+# What this project's own code is compiled with.
+#
+# An INTERFACE library, linked by every first-party target, and
+# deliberately NOT add_compile_definitions().
+#
+# add_compile_definitions() is directory-wide, and this directory also
+# contains add_subdirectory(3rd/lvgl) some 350 lines below -- so every one
+# of these reached all ~483 LVGL objects. LVGL reads none of them, but
+# CMake cannot know that, so flipping any single knob invalidated the
+# whole of LVGL: on the Pi Zero that is the difference between a rebuild
+# measured in minutes and one measured in hours, for macros it never sees.
+#
+# Everything first-party links this, including the tests that compile a
+# first-party source without moses_common -- test_dashboard builds
+# dashboard.c, which has two `#ifdef WITH_LOG` blocks, and it would
+# otherwise compile them out while the program compiled them in. A target
+# added later needs one line here rather than a define it silently lacks.
+#
+# _GNU_SOURCE and the warning flags above stay directory-wide on purpose:
+# they apply to everything compiled here, LVGL included, and they never
+# change, so they cost no rebuild.
+#
+add_library(moses_defs INTERFACE)
+target_compile_definitions(moses_defs INTERFACE
+    MQTT_TOPIC_PREFIX="${MQTT_TOPIC_PREFIX}")
 if (WITH_LOG)
-    add_compile_definitions(WITH_LOG)
+    target_compile_definitions(moses_defs INTERFACE WITH_LOG)
 endif()
 if (WITH_LINEPROTOCOL)
-    add_compile_definitions(WITH_LINEPROTOCOL)
+    target_compile_definitions(moses_defs INTERFACE WITH_LINEPROTOCOL)
 endif()
-add_compile_definitions(MQTT_TOPIC_PREFIX="${MQTT_TOPIC_PREFIX}")
 if (WITH_MQTT)
-    add_compile_definitions(WITH_MQTT)
+    target_compile_definitions(moses_defs INTERFACE WITH_MQTT)
 endif()
 if (WITH_DGRAM)
-    add_compile_definitions(WITH_DGRAM)
-    add_compile_definitions(DGRAM_PATH="${DGRAM_PATH}")
-endif()
-
-
-# Pinning the Pi's GPIO controller, when RPI_GPIO_CHIP says which.
-#
-# BITTERS_RPI_BCM_GPIO_CHIP is the macro bitters guards with #ifndef, and
-# BITTERS_RPI_GPIO_CHIP is defined from it -- so this is the one to set,
-# and setting it replaces the search list rather than adding to it.
-if (RPI_GPIO_CHIP)
-    add_compile_definitions(BITTERS_RPI_BCM_GPIO_CHIP="${RPI_GPIO_CHIP}")
-    message(STATUS "GPIO controller pinned to ${RPI_GPIO_CHIP}")
+    target_compile_definitions(moses_defs INTERFACE
+        WITH_DGRAM DGRAM_PATH="${DGRAM_PATH}")
 endif()
 
 
@@ -244,6 +258,21 @@ message(STATUS "bitters ${BITTERS_VERSION}")
 add_library(bitters INTERFACE)
 target_include_directories(bitters INTERFACE ${BITTERS_INCLUDE_DIR})
 target_compile_definitions(bitters INTERFACE BITTERS_SILENCE_WARNING)
+
+# Pinning the Pi's GPIO controller, when RPI_GPIO_CHIP says which.
+#
+# BITTERS_RPI_BCM_GPIO_CHIP is the macro bitters guards with #ifndef, and
+# BITTERS_RPI_GPIO_CHIP is defined from it -- so this is the one to set,
+# and setting it replaces the search list rather than adding to it.
+#
+# On this target rather than directory-wide: bitters' sources are compiled
+# inside whichever target links it, so this is where they are, and LVGL
+# does not have to be rebuilt to change a Raspberry Pi pin map.
+if (RPI_GPIO_CHIP)
+    target_compile_definitions(bitters INTERFACE
+        BITTERS_RPI_BCM_GPIO_CHIP="${RPI_GPIO_CHIP}")
+    message(STATUS "GPIO controller pinned to ${RPI_GPIO_CHIP}")
+endif()
 # The subsystems every consumer of this target takes. Only I2C: the
 # daemons reach nothing else, and a stray GPIO or SPI call in one of them
 # is now a compile error in the file that made it rather than a symbol
@@ -273,7 +302,7 @@ if (WITH_MQTT)
 endif()
 target_compile_definitions(moses_common PUBLIC PUT_CLOCK=CLOCK_REALTIME
                                                INTERVAL_CLOCK=CLOCK_REALTIME)
-target_link_libraries(moses_common PUBLIC Threads::Threads m)
+target_link_libraries(moses_common PUBLIC moses_defs Threads::Threads m)
 if (WITH_MQTT)
     target_link_libraries(moses_common PUBLIC ${MOSQUITTO_LIBRARY})
 endif()
@@ -367,6 +396,7 @@ if (WITH_TESTS)
 
     add_executable(test_breaker_state test/test_breaker_state.c src/breaker_state.c)
     target_include_directories(test_breaker_state PRIVATE src)
+    target_link_libraries(test_breaker_state PRIVATE moses_defs)
     add_test(NAME breaker_state COMMAND test_breaker_state)
 
     # The UPS arithmetic behind moses_display. Deliberately independent of
@@ -376,14 +406,14 @@ if (WITH_TESTS)
     add_executable(test_ups_estimate
         test/test_ups_estimate.c src/display/ups_estimate.c)
     target_include_directories(test_ups_estimate PRIVATE src/display)
-    target_link_libraries(test_ups_estimate PRIVATE m)
+    target_link_libraries(test_ups_estimate PRIVATE moses_defs m)
     add_test(NAME ups_estimate COMMAND test_ups_estimate)
 
     # The payload parsers, likewise free of LVGL, mosquitto and Linux.
     add_executable(test_payload
         test/test_payload.c src/display/payload.c)
     target_include_directories(test_payload PRIVATE src/display)
-    target_link_libraries(test_payload PRIVATE m)
+    target_link_libraries(test_payload PRIVATE moses_defs m)
     add_test(NAME payload COMMAND test_payload)
 
     # The line protocol the local datagram socket carries, read back.
@@ -400,7 +430,7 @@ if (WITH_TESTS)
         src/display/payload.c
         src/breaker_state.c)
     target_include_directories(test_lineproto PRIVATE src src/display)
-    target_link_libraries(test_lineproto PRIVATE m)
+    target_link_libraries(test_lineproto PRIVATE moses_defs m)
     add_test(NAME lineproto COMMAND test_lineproto)
 endif()
 
@@ -549,6 +579,6 @@ if (WITH_DISPLAY_TESTS)
     target_include_directories(test_dashboard PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}/src/display)
-    target_link_libraries(test_dashboard PRIVATE lvgl::lvgl Threads::Threads m)
+    target_link_libraries(test_dashboard PRIVATE moses_defs lvgl::lvgl Threads::Threads m)
     add_test(NAME dashboard COMMAND test_dashboard)
 endif()
