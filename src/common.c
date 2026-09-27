@@ -322,6 +322,42 @@ put_fail(const char *type, const char *failure)
 
 
 /************************************************************************
+ * Environment                                                          *
+ ************************************************************************/
+
+/*
+ * An environment variable, this project's spelling first.
+ *
+ * MQTT_HOST and its friends are generic names, which is both why they
+ * were chosen and why they are not enough on their own: a machine
+ * carrying more than one MQTT client has one environment between them,
+ * and pointing this one at a different broker should not mean moving
+ * everything else. MOSES_MQTT_HOST is therefore looked for first.
+ *
+ * The bare name stays as the fallback, so nothing that was configured
+ * before stops working, and the order is that way round because the
+ * specific should beat the general -- someone who sets the prefixed name
+ * meant it for moses in particular.
+ *
+ * DGRAM_PATH has no such pair. Its variable is MOSES_DGRAM_PATH and
+ * nothing else in the world defines it, so there is no general name for
+ * it to fall back to (see dgram_path()).
+ */
+static char *
+env_moses(const char *name)
+{
+    char buf[64];
+    int  n = snprintf(buf, sizeof(buf), "MOSES_%s", name);
+    if ((n < 0) || ((size_t)n >= sizeof(buf)))
+	return getenv(name);		/* not a name this tree uses */
+
+    char *v = getenv(buf);
+    return (v != NULL) ? v : getenv(name);
+}
+
+
+
+/************************************************************************
  * Topics                                                               *
  ************************************************************************/
 
@@ -331,7 +367,7 @@ put_fail(const char *type, const char *failure)
 const char *
 mqtt_topic_prefix(void)
 {
-    const char *prefix = getenv("MQTT_TOPIC_PREFIX");
+    const char *prefix = env_moses("MQTT_TOPIC_PREFIX");
     return prefix ? prefix : MQTT_TOPIC_PREFIX;
 }
 
@@ -548,15 +584,59 @@ mqtt_enabled(const struct mqtt *mqtt)
     return mqtt->cfg.host != NULL;
 }
 
+/*
+ * Clear a variable under both spellings.
+ *
+ * Both, because either one could be the one that was set, and leaving
+ * the other behind would defeat the point of clearing it at all.
+ */
+static void
+env_moses_clear(const char *name)
+{
+    char buf[64];
+    int  n = snprintf(buf, sizeof(buf), "MOSES_%s", name);
+    if ((n >= 0) && ((size_t)n < sizeof(buf)))
+	unsetenv(buf);
+    unsetenv(name);
+}
+
+
+/*
+ * A credential: copied out, then cleared from the environment.
+ *
+ * Copied first because getenv() returns a pointer into the environment
+ * and unsetenv() is free to release what it points at -- the shape this
+ * replaces handed that pointer straight to mosquitto and then cleared
+ * the variable, which held only as long as the libc happened to keep the
+ * string alive. With two spellings to clear there is more to go wrong,
+ * so the value is taken out of the environment before either is removed.
+ *
+ * The copy is never freed: it lives as long as the config does, which is
+ * as long as the program.
+ *
+ * Cleared because an environment is inherited by anything the daemon
+ * spawns, and on some systems is readable from outside the process.
+ */
+static char *
+env_moses_take(const char *name)
+{
+    const char *v    = env_moses(name);
+    char       *copy = (v != NULL) ? strdup(v) : NULL;
+
+    env_moses_clear(name);
+    return copy;
+}
+
+
 void
 mqtt_config_from_env(struct mqtt *mqtt)
 {
     struct mqtt_config *cfg = &mqtt->cfg;
-    
+
     // Use environment variable to overide default parameters
-    char *s_host      = getenv("MQTT_HOST");
-    char *s_port      = getenv("MQTT_PORT");
-    char *s_client_id = getenv("MQTT_CLIENT_ID");
+    char *s_host      = env_moses("MQTT_HOST");
+    char *s_port      = env_moses("MQTT_PORT");
+    char *s_client_id = env_moses("MQTT_CLIENT_ID");
     if (s_host) {
 	cfg->host = s_host;
     }
@@ -571,10 +651,8 @@ mqtt_config_from_env(struct mqtt *mqtt)
     if (s_client_id) {
 	cfg->client_id = s_client_id;
     }
-    cfg->username = getenv("MQTT_USERNAME");
-    cfg->password = getenv("MQTT_PASSWORD");
-    unsetenv("MQTT_USERNAME");
-    unsetenv("MQTT_PASSWORD");
+    cfg->username = env_moses_take("MQTT_USERNAME");
+    cfg->password = env_moses_take("MQTT_PASSWORD");
 }
 
 int

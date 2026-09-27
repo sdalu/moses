@@ -712,7 +712,8 @@ loop-runner -t watermeter -s 5 -- moses_watermeter -r -i 1min ...
 | `-v`   | Verbose (shell tracing)                             |
 
 It reads the same `MQTT_HOST`, `MQTT_PORT`, `MQTT_USERNAME`,
-`MQTT_PASSWORD` and `MQTT_TOPIC_PREFIX` environment variables as the
+`MQTT_PASSWORD` and `MQTT_TOPIC_PREFIX` environment variables (each
+`MOSES_MQTT_…` first, see [Run](#run)) as the
 daemons.
 
 
@@ -1001,8 +1002,18 @@ If using MQTT the following environment variables must be defined:
 | `MQTT_CLIENT_ID`     |          | Client identifier          |
 | `MQTT_TOPIC_PREFIX`  |          | Adjust topic               |
 
+**Each of those is looked for as `MOSES_MQTT_…` first**, and only then
+under the bare name — `MOSES_MQTT_HOST` before `MQTT_HOST`, and so on.
+These are generic names, which is both why they were chosen and why they
+are not quite enough: a machine carrying more than one MQTT client has
+one environment between them, and pointing moses at a different broker
+should not mean moving everything else on the box. The bare names keep
+working, so nothing configured before has to change, and the prefixed one
+wins when both are set, because whoever set it meant it for moses.
+
 `MQTT_USERNAME` and `MQTT_PASSWORD` are read once at start-up and then
-unset, so they do not linger in the process environment.
+unset — under both spellings — so they do not linger in the process
+environment where anything the daemon spawns would inherit them.
 
 Example running them:
 

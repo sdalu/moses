@@ -14,15 +14,19 @@ set -u
 : "${MOSES_CONFIG:=/root/moses/config.yaml}"
 
 # Read one key from the yaml config. This is slow, so it is only used as a
-# fallback below when the corresponding MQTT_* variable is not already set.
+# fallback below when neither spelling of the variable is already set.
 yaml() { yq -r "$1" "$MOSES_CONFIG" 2>/dev/null; }
 
-# Prefer MQTT_* from the environment; otherwise read the config file. With the
-# variables exported (e.g. from the moses environment) yq is never invoked.
-MQTT_HOST="${MQTT_HOST:-$(yaml '.[":mqtt"][":host"]')}"
-MQTT_PORT="${MQTT_PORT:-$(yaml '.[":mqtt"][":port"]')}"
-MQTT_USERNAME="${MQTT_USERNAME:-$(yaml '.[":mqtt"][":username"]')}"
-MQTT_PASSWORD="${MQTT_PASSWORD:-$(yaml '.[":mqtt"][":password"]')}"
+# Three places, most specific first: MOSES_MQTT_*, then MQTT_*, then the
+# config file. The same order the daemons use (src/common.c, env_moses) and
+# for the same reason -- these are generic names on a machine that may run
+# more than one MQTT client, so moses gets a way to be pointed somewhere
+# else on its own, without the bare names ceasing to work. With either
+# spelling exported, yq is never invoked.
+MQTT_HOST="${MOSES_MQTT_HOST:-${MQTT_HOST:-$(yaml '.[":mqtt"][":host"]')}}"
+MQTT_PORT="${MOSES_MQTT_PORT:-${MQTT_PORT:-$(yaml '.[":mqtt"][":port"]')}}"
+MQTT_USERNAME="${MOSES_MQTT_USERNAME:-${MQTT_USERNAME:-$(yaml '.[":mqtt"][":username"]')}}"
+MQTT_PASSWORD="${MOSES_MQTT_PASSWORD:-${MQTT_PASSWORD:-$(yaml '.[":mqtt"][":password"]')}}"
 
 # yq prints "null" for missing keys; treat that as unset.
 for v in MQTT_HOST MQTT_PORT MQTT_USERNAME MQTT_PASSWORD ; do
