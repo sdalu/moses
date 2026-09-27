@@ -5,7 +5,7 @@
  * of the Automation HAT Mini:
  *
  *   +--------------------------------------+
- *   | moses            21.4°        13:40  |  who, how warm, when
+ *   | moses           21.4°C        13:40  |  who, how warm, when
  *   |--------------------------------------|
  *   | (o)  213025 L                  [+3]  |  the meter, and flow
  *   |                                      |
@@ -394,7 +394,7 @@ show_temp(const struct model *m, time_t now)
     }
 
     double c = m->temperature.celsius;
-    snprintf(buf, sizeof(buf), "%.1f°", c);
+    snprintf(buf, sizeof(buf), "%.1f°C", c);
 
     if (! current(true, m->temperature.at, m->avail[MODEL_SENSORS], now))
 	set(&w.temp, INK_DIM, buf);
