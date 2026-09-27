@@ -26,29 +26,39 @@ BINDIR		?= $(PREFIX)/bin
 DESTDIR		?=
 
 #
-# Flavours: the two machines this is built for, each a set of knobs.
+# Flavours: the machines this is built for, each a set of knobs.
 #
-#   device  the Raspberry Pi the hardware is on -- the daemons, and the
-#           display wired for the Automation HAT Mini's panel should it
-#           be asked for. These are the plain defaults, so a bare
-#           `make build` is this and nothing changes for typing nothing.
-#   viewer  anywhere else -- moses_display alone, in an SDL window,
-#           watching the same broker. No daemons, so neither mosquitto's
-#           hardware nor M-Bus need exist on that machine.
+#   device   the Raspberry Pi the hardware is on, fully equipped -- the
+#            three daemons and the front panel on the Automation HAT
+#            Mini. The default. Note what that costs: WITH_DISPLAY
+#            compiles the whole of 3rd/lvgl, which is some seven hours
+#            on the Pi Zero, so a bare `make build` there is an
+#            overnight job. `FLAVOUR=sensors` is the same machine
+#            without it.
+#   sensors  the daemons alone, no panel -- the Pi before a screen was
+#            wired to it, or one where the readings are all that is
+#            wanted. Everything device has except the long compile.
+#   viewer   anywhere else -- moses_display alone, in an SDL window,
+#            watching the same broker. No daemons, so neither the GPIO
+#            and I2C hardware they drive nor M-Bus need exist on that
+#            machine. mosquitto still does: the broker is what it reads.
 #
 # Every knob below takes its default from the flavour and is still
 # settable on its own, because `?=` leaves a value the caller gave
 # alone: `make build FLAVOUR=viewer WITH_LOG=yes` is both.
 #
-FLAVOURS	 = device viewer
+FLAVOURS	 = device sensors viewer
 FLAVOUR		?= device
 
-FLAVOUR_device_PROGRAMS	= yes
-FLAVOUR_device_DISPLAY	= no
-FLAVOUR_device_BACKEND	= automation-hat-mini
-FLAVOUR_viewer_PROGRAMS	= no
-FLAVOUR_viewer_DISPLAY	= yes
-FLAVOUR_viewer_BACKEND	= sdl
+FLAVOUR_device_PROGRAMS	 = yes
+FLAVOUR_device_DISPLAY	 = yes
+FLAVOUR_device_BACKEND	 = automation-hat-mini
+FLAVOUR_sensors_PROGRAMS = yes
+FLAVOUR_sensors_DISPLAY	 = no
+FLAVOUR_sensors_BACKEND	 = automation-hat-mini
+FLAVOUR_viewer_PROGRAMS	 = no
+FLAVOUR_viewer_DISPLAY	 = yes
+FLAVOUR_viewer_BACKEND	 = sdl
 
 # The build knobs, as CMakeLists.txt names them. Kept as yes/no here and
 # turned into CMake's ON/OFF by the indirection below, because `ifeq` is
@@ -263,12 +273,14 @@ build: check-flavour check-submodules				## build what this configuration select
 # half was red.
 #
 tests: WITH_TESTS = yes
+tests: WITH_DISPLAY = no
 tests: check-flavour check-submodules				## build and run the unit tests, and report
 	$(CMAKE) -B $(BUILD) $(CMAKEFLAGS)
 	$(CMAKE) --build $(BUILD) --parallel $(JOBS)
 	$(CTEST) --test-dir $(BUILD) --output-on-failure
 
 tests-display: WITH_DISPLAY_TESTS = yes
+tests-display: WITH_DISPLAY = no
 tests-display: WITH_TESTS = no
 tests-display: WITH_WATERMETER = no
 tests-display: WITH_BREAKER = no
@@ -279,6 +291,7 @@ tests-display: check-flavour check-submodules			## render the display's screen a
 	$(CTEST) --test-dir $(BUILD) --output-on-failure -R dashboard
 
 tests-nohw: WITH_TESTS = yes
+tests-nohw: WITH_DISPLAY = no
 tests-nohw: WITH_DISPLAY_TESTS = yes
 tests-nohw: WITH_WATERMETER = no
 tests-nohw: WITH_BREAKER = no
@@ -297,15 +310,30 @@ tests-nohw: check-flavour check-submodules			## the tests that need neither mosq
 #     echo "$$MOSES_CMAKE_FLAGS"
 #
 flavours:					## the flavours, and the knobs each one stands for
-	@echo 'FLAVOUR picks a machine. Any knob can still be set on its own.'
+	@echo 'FLAVOUR picks a machine by giving these knobs their defaults.'
+	@echo 'Each one is still settable on its own.'
 	@echo ''
-	@printf '  %-8s %-14s %-14s %s\n'				\
-	    ''       'the daemons' 'WITH_DISPLAY' 'DISPLAY_BACKEND'	\
-	    'device' '$(FLAVOUR_device_PROGRAMS)' '$(FLAVOUR_device_DISPLAY)' '$(FLAVOUR_device_BACKEND)' \
-	    'viewer' '$(FLAVOUR_viewer_PROGRAMS)' '$(FLAVOUR_viewer_DISPLAY)' '$(FLAVOUR_viewer_BACKEND)'
+	@printf '  %-18s %-21s %-21s %s\n'				\
+	    'knob'		'device'	'sensors'    'viewer'	\
+	    'WITH_WATERMETER'	'$(FLAVOUR_device_PROGRAMS)'		\
+				'$(FLAVOUR_sensors_PROGRAMS)'		\
+				'$(FLAVOUR_viewer_PROGRAMS)'		\
+	    'WITH_BREAKER'	'$(FLAVOUR_device_PROGRAMS)'		\
+				'$(FLAVOUR_sensors_PROGRAMS)'		\
+				'$(FLAVOUR_viewer_PROGRAMS)'		\
+	    'WITH_TEMPERATURE'	'$(FLAVOUR_device_PROGRAMS)'		\
+				'$(FLAVOUR_sensors_PROGRAMS)'		\
+				'$(FLAVOUR_viewer_PROGRAMS)'		\
+	    'WITH_DISPLAY'	'$(FLAVOUR_device_DISPLAY)'		\
+				'$(FLAVOUR_sensors_DISPLAY)'		\
+				'$(FLAVOUR_viewer_DISPLAY)'		\
+	    'DISPLAY_BACKEND'	'$(FLAVOUR_device_BACKEND)'		\
+				'$(FLAVOUR_sensors_BACKEND)'		\
+				'$(FLAVOUR_viewer_BACKEND)'
 	@echo ''
-	@echo 'device: the Raspberry Pi the hardware is on. viewer: anywhere'
-	@echo 'else, moses_display alone in a window, watching the same broker.'
+	@echo 'device:  the Pi the hardware is on, daemons and panel both.'
+	@echo 'sensors: the same machine without the panel.'
+	@echo 'viewer:  anywhere else -- moses_display alone in a window.'
 
 
 options:					## every build knob, and what it defaults to

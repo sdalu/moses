@@ -788,24 +788,37 @@ are documented in the [Software](#software) section.
 Flavours
 --------
 
-`FLAVOUR` names the machine being built for, so the usual two do not
-have to be spelled out knob by knob:
+`FLAVOUR` names the machine being built for, so a set of knobs does not
+have to be spelled out one by one:
 
 ~~~sh
-make build                      # device: the Pi the hardware is on
-make build FLAVOUR=viewer       # viewer: a window, anywhere else
+make build                      # device:  the Pi, daemons and panel both
+make build FLAVOUR=sensors      # sensors: the same Pi, no panel
+make build FLAVOUR=viewer       # viewer:  a window, anywhere else
 ~~~
 
-| FLAVOUR  | the daemons | `WITH_DISPLAY` | `DISPLAY_BACKEND` |
-|----------|----------------|----------------|-------------------|
-| `device` | yes            | no             | automation-hat-mini |
-| `viewer` | no             | yes            | sdl               |
+Each row is a knob you can also set on its own; the flavour only decides
+what it defaults to.
 
-`device` is the default and is exactly what the individual knobs
-defaulted to before, so a bare `make build` is unchanged. `viewer`
-builds `moses_display` alone against SDL — no daemons, so neither
-mosquitto's hardware nor M-Bus need exist on that machine, and it
-watches the same broker from wherever it runs.
+| knob               | `device`            | `sensors`           | `viewer` |
+|--------------------|---------------------|---------------------|----------|
+| `WITH_WATERMETER`  | yes                 | yes                 | no       |
+| `WITH_BREAKER`     | yes                 | yes                 | no       |
+| `WITH_TEMPERATURE` | yes                 | yes                 | no       |
+| `WITH_DISPLAY`     | yes                 | no                  | yes      |
+| `DISPLAY_BACKEND`  | automation-hat-mini | automation-hat-mini | sdl      |
+
+`device` is the default: the Raspberry Pi the hardware is on, fully
+equipped. **It includes the front panel, and so the whole of
+`3rd/lvgl`** — some seven hours on a Pi Zero, which makes a bare `make
+build` there an overnight job. `sensors` is the same machine without the
+panel: the three daemons, and none of that compile. Reach for it
+whenever the readings are what you are after.
+
+`viewer` builds `moses_display` alone against SDL — no daemons, so
+neither the GPIO and I2C hardware they drive nor M-Bus need exist on
+that machine, and it watches the same broker from wherever it runs.
+mosquitto does still have to be there: the broker is what it reads.
 
 A flavour only supplies *defaults*: any knob set on the command line
 still wins, so `make build FLAVOUR=viewer WITH_LOG=yes` is both. `make
