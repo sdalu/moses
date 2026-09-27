@@ -18,6 +18,14 @@ into a proprietary cloud.
 The valve is *normally open*: `moses_breaker` only energises the relay
 to close the water, so a power loss or a crash leaves the supply open.
 
+| Water flowing, on mains | Valve shut, freezing, on battery |
+| :---------------------: | :------------------------------: |
+| <img src="test/ref-imgs/dashboard-flow.png" width="320" alt="The panel: 213025 L with a +3 flow marker, valve open, UPS on mains at 98%"> | <img src="test/ref-imgs/dashboard-alarm.png" width="320" alt="The panel: valve shut and 1.5°C in red, UPS on battery at 42% with about 30 minutes left"> |
+
+The panel, as `moses_display` draws it on the HAT's 160x80 LCD. These
+are the test suite's own reference images (`test/ref-imgs/`), so they
+are what the code renders today.
+
 
 Documentation
 -------------
