@@ -43,6 +43,14 @@ DESTDIR		?=
 #            and I2C hardware they drive nor M-Bus need exist on that
 #            machine. mosquitto still does: the broker is what it reads.
 #
+# The sinks go with the machine, which is why they are here and not
+# standalone defaults. Where the daemons run -- device and sensors --
+# all three are on: the broker for everything off the box, the local
+# socket for the panel beside it, and stdout for whatever is collecting
+# lines. They are not alternatives and cost nothing to have together,
+# one formatter feeding each of them. The viewer produces no readings at
+# all, so it has only the broker, which is where it reads them from.
+#
 # Every knob below takes its default from the flavour and is still
 # settable on its own, because `?=` leaves a value the caller gave
 # alone: `make build FLAVOUR=viewer WITH_LOG=yes` is both.
@@ -50,27 +58,38 @@ DESTDIR		?=
 FLAVOURS	 = device sensors viewer
 FLAVOUR		?= device
 
-FLAVOUR_device_PROGRAMS	 = yes
-FLAVOUR_device_DISPLAY	 = yes
-FLAVOUR_device_BACKEND	 = automation-hat-mini
-FLAVOUR_sensors_PROGRAMS = yes
-FLAVOUR_sensors_DISPLAY	 = no
-FLAVOUR_sensors_BACKEND	 = automation-hat-mini
-FLAVOUR_viewer_PROGRAMS	 = no
-FLAVOUR_viewer_DISPLAY	 = yes
-FLAVOUR_viewer_BACKEND	 = sdl
+FLAVOUR_device_PROGRAMS       = yes
+FLAVOUR_device_DISPLAY        = yes
+FLAVOUR_device_BACKEND        = automation-hat-mini
+FLAVOUR_device_MQTT           = yes
+FLAVOUR_device_LINEPROTOCOL   = yes
+FLAVOUR_device_DGRAM          = yes
+
+FLAVOUR_sensors_PROGRAMS      = yes
+FLAVOUR_sensors_DISPLAY       = no
+FLAVOUR_sensors_BACKEND       = automation-hat-mini
+FLAVOUR_sensors_MQTT          = yes
+FLAVOUR_sensors_LINEPROTOCOL  = yes
+FLAVOUR_sensors_DGRAM         = yes
+
+FLAVOUR_viewer_PROGRAMS       = no
+FLAVOUR_viewer_DISPLAY        = yes
+FLAVOUR_viewer_BACKEND        = sdl
+FLAVOUR_viewer_MQTT           = yes
+FLAVOUR_viewer_LINEPROTOCOL   = no
+FLAVOUR_viewer_DGRAM          = no
 
 # The build knobs, as CMakeLists.txt names them. Kept as yes/no here and
 # turned into CMake's ON/OFF by the indirection below, because `ifeq` is
 # GNU-only and BSD make rejects the line outright.
 WITH_LOG	?= no
-WITH_LINEPROTOCOL ?= no
+WITH_LINEPROTOCOL ?= $(FLAVOUR_$(FLAVOUR)_LINEPROTOCOL)
 WITH_TESTS	?= no
 WITH_WATERMETER	?= $(FLAVOUR_$(FLAVOUR)_PROGRAMS)
 WITH_BREAKER	?= $(FLAVOUR_$(FLAVOUR)_PROGRAMS)
 WITH_TEMPERATURE ?= $(FLAVOUR_$(FLAVOUR)_PROGRAMS)
-WITH_MQTT	?= yes
-WITH_DGRAM	?= no
+WITH_MQTT	?= $(FLAVOUR_$(FLAVOUR)_MQTT)
+WITH_DGRAM	?= $(FLAVOUR_$(FLAVOUR)_DGRAM)
 WITH_DISPLAY	?= $(FLAVOUR_$(FLAVOUR)_DISPLAY)
 WITH_DISPLAY_TESTS ?= no
 WITH_WERROR	?= no
@@ -355,6 +374,15 @@ flavours:					## the flavours, and the knobs each one stands for
 	@echo ''
 	@printf '  %-18s %-21s %-21s %s\n'				\
 	    'knob'		'device'	'sensors'    'viewer'	\
+	    'WITH_MQTT'		'$(FLAVOUR_device_MQTT)'		\
+				'$(FLAVOUR_sensors_MQTT)'		\
+				'$(FLAVOUR_viewer_MQTT)'		\
+	    'WITH_LINEPROTOCOL'	'$(FLAVOUR_device_LINEPROTOCOL)'	\
+				'$(FLAVOUR_sensors_LINEPROTOCOL)'	\
+				'$(FLAVOUR_viewer_LINEPROTOCOL)'	\
+	    'WITH_DGRAM'	'$(FLAVOUR_device_DGRAM)'		\
+				'$(FLAVOUR_sensors_DGRAM)'		\
+				'$(FLAVOUR_viewer_DGRAM)'		\
 	    'WITH_WATERMETER'	'$(FLAVOUR_device_PROGRAMS)'		\
 				'$(FLAVOUR_sensors_PROGRAMS)'		\
 				'$(FLAVOUR_viewer_PROGRAMS)'		\

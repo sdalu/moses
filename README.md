@@ -804,13 +804,16 @@ make build FLAVOUR=viewer       # viewer:  a window, anywhere else
 Each row is a knob you can also set on its own; the flavour only decides
 what it defaults to.
 
-| knob               | `device`            | `sensors`           | `viewer` |
-|--------------------|---------------------|---------------------|----------|
-| `WITH_WATERMETER`  | yes                 | yes                 | no       |
-| `WITH_BREAKER`     | yes                 | yes                 | no       |
-| `WITH_TEMPERATURE` | yes                 | yes                 | no       |
-| `WITH_DISPLAY`     | yes                 | no                  | yes      |
-| `DISPLAY_BACKEND`  | automation-hat-mini | automation-hat-mini | sdl      |
+| knob                | `device`            | `sensors`           | `viewer` |
+|---------------------|---------------------|---------------------|----------|
+| `WITH_MQTT`         | yes                 | yes                 | yes      |
+| `WITH_LINEPROTOCOL` | yes                 | yes                 | no       |
+| `WITH_DGRAM`        | yes                 | yes                 | no       |
+| `WITH_WATERMETER`   | yes                 | yes                 | no       |
+| `WITH_BREAKER`      | yes                 | yes                 | no       |
+| `WITH_TEMPERATURE`  | yes                 | yes                 | no       |
+| `WITH_DISPLAY`      | yes                 | no                  | yes      |
+| `DISPLAY_BACKEND`   | automation-hat-mini | automation-hat-mini | sdl      |
 
 `device` is the default: the Raspberry Pi the hardware is on, fully
 equipped. **It includes the front panel, and so the whole of
@@ -823,6 +826,18 @@ whenever the readings are what you are after.
 neither the GPIO and I2C hardware they drive nor M-Bus need exist on
 that machine, and it watches the same broker from wherever it runs.
 mosquitto does still have to be there: the broker is what it reads.
+
+The three sinks go with the machine too, which is why they are in the
+table rather than left as plain build defaults. Where the daemons run —
+`device` and `sensors` — all three are on: the broker for everything off
+the box, the [local socket](#a-local-socket-beside-mqtt) for a panel
+beside it, and stdout for whatever is collecting lines. They are not
+alternatives and cost nothing to have together: one formatter feeds each
+of them, and a socket nobody has bound is the normal state, not a fault.
+That is also why `sensors` keeps `WITH_DGRAM` on although it builds no
+display — a consumer can be attached later without a rebuild. The viewer
+produces no readings at all, so it has only the broker, which is where
+it reads them from.
 
 A flavour only supplies *defaults*: any knob set on the command line
 still wins, so `make build FLAVOUR=viewer WITH_LOG=yes` is both. `make
