@@ -3,11 +3,13 @@
  *
  * Renders src/display/dashboard.c onto LVGL's own headless test display
  * at the panel's size and colour format, and compares each frame with a
- * reference PNG under test/ref-imgs/. A missing reference is written
- * rather than failed, so adding a case means running this once and
- * looking at what came out; a mismatch writes `<name>_err.png` beside
- * the reference, so a regression can be looked at rather than guessed
- * at.
+ * reference PNG under test/ref-imgs/. A missing reference is a failure,
+ * not something to be filled in from whatever was just rendered: see
+ * write_reference() below for why, and for how to add a case. A
+ * mismatch writes `<name>_err.png` beside the reference, so a
+ * regression can be looked at rather than guessed at.
+ *
+ * Run with -w it writes the references instead of comparing them.
  *
  * This exists because the screen is otherwise unknowable without
  * standing in front of the machine. It needs no panel, no GPIO, no SPI
@@ -45,6 +47,23 @@
 #include "model.h"
 
 
+/* Where the reference PNGs live, as CMakeLists.txt passes it -- with
+ * LVGL's drive letter on the front, because LVGL's lodepng reads and
+ * writes through lv_fs_* rather than stdio. Defaulted the way
+ * lv_test_screenshot_compare.c defaults it, so this still compiles if
+ * the definition is ever missing. */
+#ifndef REF_IMGS_PATH
+#define REF_IMGS_PATH	""
+#endif
+
+/* LVGL's bundled lodepng. Declared rather than included: its header is
+ * not on this target's include path, and one function is all that is
+ * wanted here. */
+unsigned lodepng_encode32_file(const char *filename,
+			       const unsigned char *image,
+			       unsigned w, unsigned h);
+
+
 /* The panel: 160x80 landscape (README, *LCD*). */
 #define PANEL_W		160
 #define PANEL_H		80
@@ -66,12 +85,99 @@
 #define ACCENT		0xff0000
 
 
-static int failures = 0;
-static int checks   = 0;
+static int  failures = 0;
+static int  checks   = 0;
+
+/* -w: write the references rather than compare against them. */
+static bool writing  = false;
 
 
 /*
- * Render one model and compare it with its reference.
+ * Write what is on the screen to its reference PNG. -w, and nothing else.
+ *
+ * LVGL will do this itself for a reference that does not exist yet, but
+ * it does it inside the compare and then returns PASSED, which makes a
+ * renamed or newly added case mint its own golden image and never fail
+ * -- the test would be checking the renderer against itself. So
+ * LV_TEST_SCREENSHOT_CREATE_REFERENCE_IMAGE is 0 in src/lv_conf.h and
+ * the writing lives here instead, where it happens only when asked for,
+ * and where asking costs no LVGL rebuild.
+ *
+ * Adding or changing a case is then: run this with -w, look at the PNG
+ * it produced and decide whether it is actually right, and run without
+ * -w to confirm. `git diff` and `git status` say exactly what moved,
+ * which is the real check -- a reference is only worth having if someone
+ * looked at it.
+ *
+ * The conversion is LVGL's RGB888 to the RGBA lodepng's 32-bit encoder
+ * takes: a pixel is stored blue, green, red (lv_color_t in LVGL's
+ * lv_color.h), so the three bytes are reversed and an opaque alpha
+ * added. It has to agree with buf_to_xrgb8888() in
+ * lv_test_screenshot_compare.c, on the reading side, or a reference
+ * written here would not compare equal to the very screen it came from.
+ * That is worth knowing is true rather than assuming: writing the
+ * references and then running the comparison against them is what
+ * checks it, and the committed PNGs came out byte-identical.
+ */
+static bool
+write_reference(const char *name)
+{
+    /* The compare path refreshes before it reads the buffer; so must this. */
+    lv_refr_now(NULL);
+
+    lv_draw_buf_t *buf = lv_display_get_buf_active(lv_display_get_default());
+    if (buf == NULL) {
+	fprintf(stderr, "%s: no active draw buffer\n", name);
+	return false;
+    }
+    if (buf->header.cf != LV_COLOR_FORMAT_RGB888) {
+	fprintf(stderr, "%s: the screen is not RGB888 (cf=%d), and the "
+		"conversion below assumes it is\n", name, (int)buf->header.cf);
+	return false;
+    }
+
+    uint32_t w = buf->header.w;
+    uint32_t h = buf->header.h;
+
+    uint8_t *rgba = malloc((size_t)w * (size_t)h * 4);
+    if (rgba == NULL) {
+	fprintf(stderr, "%s: out of memory\n", name);
+	return false;
+    }
+
+    const uint8_t *in  = buf->data;
+    uint8_t       *out = rgba;
+    for (uint32_t y = 0 ; y < h ; y++) {
+	for (uint32_t x = 0 ; x < w ; x++) {
+	    out[x * 4 + 0] = in[x * 3 + 2];
+	    out[x * 4 + 1] = in[x * 3 + 1];
+	    out[x * 4 + 2] = in[x * 3 + 0];
+	    out[x * 4 + 3] = 0xff;
+	}
+	in  += buf->header.stride;
+	out += (size_t)w * 4;
+    }
+
+    char path[512];
+    snprintf(path, sizeof(path), "%s%s", REF_IMGS_PATH, name);
+
+    unsigned err = lodepng_encode32_file(path, rgba, w, h);
+    free(rgba);
+
+    if (err != 0) {
+	fprintf(stderr, "%s: cannot write %s (lodepng error %u)\n",
+		name, path, err);
+	return false;
+    }
+
+    printf("wrote %s\n", name);
+    return true;
+}
+
+
+/*
+ * Render one model and either compare it with its reference or, under -w,
+ * write it.
  *
  * The screen is torn down and rebuilt each time rather than updated,
  * because these are separate pictures and not successive states of one.
@@ -84,6 +190,13 @@ shot(const char *name, const struct model *m)
     dashboard_update(m, NOW);
 
     checks++;
+
+    if (writing) {
+	if (! write_reference(name))
+	    failures++;
+	return;
+    }
+
     if (lv_test_screenshot_compare(name) != LV_TEST_SCREENSHOT_RESULT_PASSED) {
 	failures++;
 	fprintf(stderr, "FAIL %s\n", name);
@@ -125,8 +238,17 @@ nominal(void)
 
 
 int
-main(void)
+main(int argc, char **argv)
 {
+    if ((argc == 2) && (strcmp(argv[1], "-w") == 0)) {
+	writing = true;
+    } else if (argc > 1) {
+	fprintf(stderr, "usage: %s [-w]\n", argv[0]);
+	fprintf(stderr, "  -w  write the reference images instead of "
+		"comparing against them\n");
+	return EXIT_FAILURE;
+    }
+
     /* The header shows a local time, so the zone is part of the
      * picture. Pinned, or the reference would only match in the zone it
      * was made in. */
@@ -228,7 +350,14 @@ main(void)
 	shot("dashboard-empty.png", &m);
     }
 
-    printf("%s: %d screenshots, %d failures\n",
-	   (failures == 0) ? "PASS" : "FAIL", checks, failures);
+    if (writing) {
+	printf("%s: %d references written, %d failures\n",
+	       (failures == 0) ? "OK" : "FAIL", checks - failures, failures);
+	if (failures == 0)
+	    printf("now look at them, and run without -w to confirm\n");
+    } else {
+	printf("%s: %d screenshots, %d failures\n",
+	       (failures == 0) ? "PASS" : "FAIL", checks, failures);
+    }
     return (failures == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }

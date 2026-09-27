@@ -871,24 +871,44 @@ ctest --test-dir build-display --output-on-failure
 
 It needs LVGL but no panel, no GPIO, no SPI and no broker — nothing
 Linux-only — so it runs on a development machine as well as on the Pi,
-which the rest of `moses_display` does not. Turning the three programs
-off is what
-lets it configure where mosquitto and libmbus are not installed.
+which the rest of `moses_display` does not. Turning the three programs off
+is what lets it configure where mosquitto and libmbus are not installed.
 
-A reference image that does not exist yet is **written** rather than
-failed, so adding a case means running the test once and looking at what
-came out. One that does not match leaves `<name>_err.png` beside it, so
-a regression can be looked at rather than guessed at. Every input is
-fixed — the clock and the device name are arguments to the dashboard rather
-than things it reads, and `TZ` is pinned — so the same bytes come out on
-every machine.
+A reference image that does not exist **fails** the test, rather than
+being created from whatever was just rendered. LVGL will do the latter,
+and it is the more convenient default, but it means a renamed or newly
+added screenshot mints its own golden image and can never fail — the test
+would be checking the renderer against itself. So
+`LV_TEST_SCREENSHOT_CREATE_REFERENCE_IMAGE` is 0 in `src/lv_conf.h`.
+
+Writing the references is a separate, deliberate step:
+
+~~~sh
+make tests-refs     # rewrite test/ref-imgs/ from what the screen renders
+git diff --stat test/ref-imgs
+make tests-display  # confirm they compare equal
+~~~
+
+`make tests-refs` runs the test with `-w`, which writes every reference
+instead of comparing it. The images are in the source tree, so `git diff`
+says exactly what moved and the images themselves say whether it was
+right — **look at them**, because a reference nobody looked at proves
+nothing. A reference that exists but does not match leaves
+`<name>_err.png` beside it, so a regression can be looked at rather than
+guessed at.
+
+Every input is fixed — the clock and the device name are arguments to the
+dashboard rather than things it reads, and `TZ` is pinned — so the same
+bytes come out on every machine.
 
 What it proves: the layout, the fonts, the three inks, and the whole
-path from model to pixels, at the exact 160x80 RGB565 the panel gets.
-What it cannot: that those pixels reach the glass. The RGB565 byte swap,
-the (1,26) offset into the ST7735's RAM and the 270° rotation all live
-in the backend's flush path, past the point this sees. Only the panel
-proves those.
+path from model to pixels, at the exact 160x80 RGB888 the panel gets.
+What it cannot: that those pixels reach the glass. The byte order the
+controller reads a pixel in, the (1,26) offset into the ST7735's RAM and
+the 270° rotation all live in the backend's flush path, past the point
+this sees. Only the panel proves those — and that gap is not
+hypothetical: these images were correct while the panel showed the water
+drop gold instead of cyan, red and blue exchanged by MADCTL's BGR bit.
 
 Install
 -------

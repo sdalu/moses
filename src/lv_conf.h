@@ -946,10 +946,11 @@
 /** PNG decoder (LodePNG).
  *
  *  Nothing here draws an image, so it is out of the program that runs
- *  the panel. The screenshot test is the exception: lv_test_screenshot_
- *  compare() writes and reads its reference PNGs with lodepng directly
- *  (not through an LVGL filesystem driver, which is why LV_USE_FS_POSIX
- *  can stay off below), and refuses to compile without it. */
+ *  the panel. The screenshot test is the exception: the reference PNGs
+ *  are read and written with lodepng, which the compare refuses to
+ *  compile without. LVGL's copy of it is patched to go through lv_fs_*
+ *  rather than stdio, so LV_USE_FS_POSIX has to be on as well and the
+ *  paths carry a drive letter -- see both, below. */
 #ifdef MOSES_LV_TEST
 #define LV_USE_LODEPNG 1
 #else
@@ -2320,8 +2321,25 @@
 #if LV_USE_TEST_SCREENSHOT_COMPARE
 /** When a reference image does not exist yet, create it from the rendered
  *  screen instead of failing the compare.
+ *
+ *  Off, deliberately. At 1 a missing reference is written from whatever was
+ *  just rendered and the compare returns PASSED, so a renamed or newly
+ *  added screenshot mints its own golden image and can never fail -- the
+ *  test would be checking the renderer against itself. At 0 it returns
+ *  NO_REFERENCE_IMAGE, which test/test_dashboard.c counts as a failure.
+ *
+ *  It also stops lv_test_screenshot_compare.c calling
+ *  create_folders_if_needed(), which mkdir()s the REF_IMGS_PATH we pass it
+ *  with plain POSIX calls and no drive-letter handling -- leaving an "A:"
+ *  directory tree under the working directory. (The PNG reads and writes
+ *  themselves go through lv_fs, which does strip the letter.)
+ *
+ *  Nothing is lost by switching it off: test/test_dashboard.c writes the
+ *  references itself, under -w, so `make tests-refs` regenerates them
+ *  without touching this file -- which matters, because every LVGL
+ *  translation unit includes it and editing it rebuilds all of them.
  */
-#define LV_TEST_SCREENSHOT_CREATE_REFERENCE_IMAGE 1
+#define LV_TEST_SCREENSHOT_CREATE_REFERENCE_IMAGE 0
 
 #endif /*LV_USE_TEST_SCREENSHOT_COMPARE*/
 

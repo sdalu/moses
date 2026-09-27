@@ -144,7 +144,7 @@ INSTALLED	= moses_watermeter moses_breaker moses_sensors moses_display
 INSTALLED	+= loop-runner nut-notify
 
 .PHONY: help all check check-flavour check-submodules check-shell build \
-	tests tests-display tests-nohw \
+	tests tests-display tests-refs tests-nohw \
 	flavours options features clean distclean install uninstall
 
 
@@ -289,6 +289,29 @@ tests-display: check-flavour check-submodules			## render the display's screen a
 	$(CMAKE) -B $(BUILD) $(CMAKEFLAGS)
 	$(CMAKE) --build $(BUILD) --parallel $(JOBS)
 	$(CTEST) --test-dir $(BUILD) --output-on-failure -R dashboard
+
+#
+# Writing the references is deliberate and separate, because a reference
+# nobody looked at proves nothing: LVGL can fill a missing one in from
+# whatever was just rendered and pass, which is why that is switched off
+# (src/lv_conf.h, LV_TEST_SCREENSHOT_CREATE_REFERENCE_IMAGE) and why the
+# writing is the test's own -w. The images land in the source tree, so
+# `git diff` is what says whether the change was the intended one.
+#
+tests-refs: WITH_DISPLAY_TESTS = yes
+tests-refs: WITH_DISPLAY = no
+tests-refs: WITH_TESTS = no
+tests-refs: WITH_WATERMETER = no
+tests-refs: WITH_BREAKER = no
+tests-refs: WITH_TEMPERATURE = no
+tests-refs: check-flavour check-submodules		## rewrite test/ref-imgs/ from what the screen renders now
+	$(CMAKE) -B $(BUILD) $(CMAKEFLAGS)
+	$(CMAKE) --build $(BUILD) --parallel $(JOBS)
+	./bin/test_dashboard -w
+	@echo ''
+	@echo 'Review them before committing: `git diff --stat test/ref-imgs`'
+	@echo 'for what moved, the images themselves for whether it is right,'
+	@echo 'then `make tests-display` to confirm they compare equal.'
 
 tests-nohw: WITH_TESTS = yes
 tests-nohw: WITH_DISPLAY = no
