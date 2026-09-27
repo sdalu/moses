@@ -5,7 +5,8 @@
 # daemons, which are not supposed to terminate.
 #
 # MQTT is taken from the environment (MQTT_HOST/PORT/USERNAME/PASSWORD and
-# MQTT_TOPIC_PREFIX); reporting is skipped when MQTT_HOST is unset.
+# MQTT_TOPIC_PREFIX), each looked for as MOSES_MQTT_* first and under the bare
+# name second; reporting is skipped when no host is set either way.
 #
 set -u
 
@@ -15,6 +16,18 @@ stime=5
 
 : "${SLEEP:=/bin/sleep}"
 : "${MOSQUITTO_PUB:=/usr/bin/mosquitto_pub}"
+
+# MQTT, most specific first: MOSES_MQTT_*, then MQTT_*. The order the daemons
+# use (src/common.c, env_moses) and scripts/nut-notify with it -- these are
+# generic names on a machine that may carry more than one MQTT client, so
+# moses can be pointed elsewhere on its own without the bare names ceasing to
+# work. Resolved once here, so notify() below has a single spelling to read
+# and the default prefix is settled in one place.
+MQTT_HOST="${MOSES_MQTT_HOST:-${MQTT_HOST:-}}"
+MQTT_PORT="${MOSES_MQTT_PORT:-${MQTT_PORT:-}}"
+MQTT_USERNAME="${MOSES_MQTT_USERNAME:-${MQTT_USERNAME:-}}"
+MQTT_PASSWORD="${MOSES_MQTT_PASSWORD:-${MQTT_PASSWORD:-}}"
+MQTT_TOPIC_PREFIX="${MOSES_MQTT_TOPIC_PREFIX:-${MQTT_TOPIC_PREFIX:-water-breaker}}"
 
 usage() {
     echo "Usage: ${0##*/} [-v] [-t type] [-s seconds] -- command [args...]" >&2
@@ -44,16 +57,16 @@ json_escape() {
     printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
 
-# Publish a crash report on the shared error topic (no-op without MQTT_HOST).
+# Publish a crash report on the shared error topic (no-op without a host).
 notify() {
-    [ -n "${MQTT_HOST:-}" ] || return 0
+    [ -n "$MQTT_HOST" ] || return 0
     msg="{ \"source\": \"$(json_escape "$type")\", \"type\": \"crash\""
     msg="$msg, \"msg\": \"$(json_escape "$1")\" }"
     $MOSQUITTO_PUB -h "$MQTT_HOST"                     \
         ${MQTT_PORT:+-p "$MQTT_PORT"}                  \
         ${MQTT_USERNAME:+-u "$MQTT_USERNAME"}          \
         ${MQTT_PASSWORD:+-P "$MQTT_PASSWORD"}          \
-        -t "${MQTT_TOPIC_PREFIX:-water-breaker}/error" \
+        -t "$MQTT_TOPIC_PREFIX/error"                  \
         -m "$msg"
 }
 

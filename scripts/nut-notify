@@ -11,7 +11,12 @@ set -u
 
 : "${MOSQUITTO_PUB:=/usr/bin/mosquitto_pub}"
 : "${UPSC:=/usr/bin/upsc}"
-: "${MOSES_CONFIG:=/root/moses/config.yaml}"
+# HOME is guarded because this runs as upsmon's NOTIFYCMD, and a daemon's
+# environment often has no HOME at all -- with `set -u` above, a bare $HOME
+# would end the script instead of falling back. Root is the right guess when
+# it is missing: upsmon runs as root, because shutting the machine down is
+# what it is for.
+: "${MOSES_CONFIG:=${HOME:-/root}/.config/moses.yaml}"
 
 # Read one key from the yaml config. This is slow, so it is only used as a
 # fallback below when neither spelling of the variable is already set.

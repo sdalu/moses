@@ -982,7 +982,12 @@ sudo install -m 0755 bin/moses_watermeter bin/moses_breaker \
 
 The helper scripts under `scripts/` (`loop-runner`, `nut-notify`) are
 optional; run them straight from the repository or copy them wherever
-suits your setup — they need no particular installation step.
+suits your setup — they need no particular installation step. Both read
+the MQTT settings from the environment, `MOSES_MQTT_*` before the bare
+names, exactly as the daemons do. `nut-notify` additionally falls back to
+a YAML config — `$MOSES_CONFIG`, or `$HOME/.config/moses.yaml`, or
+`/root/.config/moses.yaml` when the environment has no `HOME`, which is
+the usual state of a `NOTIFYCMD` run by `upsmon`.
 
 The daemons are meant to run continuously; supervise each one with
 [`loop-runner`](#supervision) so it is restarted on failure (and a crash
