@@ -56,7 +56,7 @@ jobs:
         sudo make install
 
     - name: Configure
-      run: cmake -B build -DWITH_LOG=1 -DWITH_PUT=1 -DWITH_WERROR=1 -DWITH_TESTS=ON -DWITH_DBUS=ON
+      run: cmake -B build -DWITH_LOG=1 -DWITH_LINEPROTOCOL=1 -DWITH_WERROR=1 -DWITH_TESTS=ON -DWITH_DBUS=ON
 
     - name: Build
       run: cmake --build build --parallel "$(nproc)"
@@ -68,7 +68,7 @@ jobs:
     # plain build break. -fanalyzer is scoped to first-party sources.
     - name: Static analysis (gcc -fanalyzer)
       run: |
-        cmake -B build-analyze -DWITH_LOG=1 -DWITH_PUT=1 -DWITH_WERROR=1 -DWITH_ANALYZER=1 -DWITH_DBUS=ON
+        cmake -B build-analyze -DWITH_LOG=1 -DWITH_LINEPROTOCOL=1 -DWITH_WERROR=1 -DWITH_ANALYZER=1 -DWITH_DBUS=ON
         cmake --build build-analyze --parallel "$(nproc)"
 
     - name: Upload executables

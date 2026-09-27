@@ -847,18 +847,29 @@ flavours` prints the table above with the current values.
 Tests
 -----
 
-The unit tests are off by default. Enable them at configure time, build,
-and run them with `ctest`:
+The unit tests are off by default. `make tests` turns them on, builds
+them and runs them:
 
 ~~~sh
-cmake -B build -DWITH_TESTS=ON
+make tests
+~~~
+
+which is this, with the flavour's knobs filled in:
+
+~~~sh
+cmake -B build -DWITH_TESTS=ON -DWITH_DBUS=ON
 make    -C build
 ctest --test-dir build --output-on-failure
 ~~~
 
+`WITH_TESTS` alone registers five of the seven: `dbus` also wants
+`WITH_DBUS`, and `dashboard` wants `WITH_DISPLAY_TESTS`. Every flavour
+that produces readings has `WITH_DBUS` on, so `make tests` gets the
+sixth without being told.
+
 | Test            | Covers                                                  |
 |-----------------|---------------------------------------------------------|
-| `parsers`       | the option and payload parsers in `src/common.c`        |
+| `parsers`       | the nine option parsers: the M-Bus baudrate and the period and timeout spellings in `src/common.c`, and the `chip:pin`, edge, bias, mode and active-level words in `src/gpio.c` — which is why this one test needs Linux |
 | `breaker_state` | `breaker_parse_state()`, the valve command vocabulary — also what `moses_display` reads the `state` topic with, so the two cannot disagree |
 | `ups_estimate`  | `ups_on_battery()` and `ups_runtime()`: which `ups.status` flags mean on-battery, and the remaining-time division, including every way its inputs can fail to add up |
 | `payload`       | `src/display/payload.c`: what `moses_display` makes of a published payload — the index, the pulse count, the sensors JSON and an availability |
@@ -868,14 +879,25 @@ ctest --test-dir build --output-on-failure
 
 All but `parsers` need neither mosquitto nor M-Bus nor anything
 Linux-only, so they run on a development machine too — `dbus` wanting
-only libdbus and `dbus-run-session`, which come with any desktop:
+only libdbus and `dbus-run-session`, which come with any desktop.
+`make tests-nohw` is those six:
 
 ~~~sh
-cmake -B build-nohw -DWITH_TESTS=ON -DWITH_DISPLAY_TESTS=ON \
-      -DWITH_WATERMETER=OFF -DWITH_BREAKER=OFF -DWITH_TEMPERATURE=OFF
-make  -C build-nohw
-ctest --test-dir build-nohw --output-on-failure
+make tests-nohw
 ~~~
+
+which is this:
+
+~~~sh
+cmake -B build -DWITH_TESTS=ON -DWITH_DISPLAY_TESTS=ON -DWITH_DBUS=ON \
+      -DWITH_WATERMETER=OFF -DWITH_BREAKER=OFF -DWITH_TEMPERATURE=OFF
+make  -C build
+ctest --test-dir build --output-on-failure
+~~~
+
+Leaving `-DWITH_DBUS=ON` out of that is the quiet way to get five: the
+`dbus` test is simply never built, and `ctest` reports 5/5 green with no
+sign that the bus went untested.
 
 
 ### The system bus, beside MQTT
@@ -1083,10 +1105,16 @@ headless test display and compares it against the reference images in
 `test/ref-imgs/`:
 
 ~~~sh
-cmake -B build-display -DWITH_DISPLAY_TESTS=ON \
+make tests-display
+~~~
+
+which is this:
+
+~~~sh
+cmake -B build -DWITH_DISPLAY_TESTS=ON \
       -DWITH_WATERMETER=OFF -DWITH_BREAKER=OFF -DWITH_TEMPERATURE=OFF
-make  -C build-display
-ctest --test-dir build-display --output-on-failure
+make  -C build
+ctest --test-dir build --output-on-failure -R dashboard
 ~~~
 
 It needs LVGL but no panel, no GPIO, no SPI and no broker — nothing

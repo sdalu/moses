@@ -26,8 +26,10 @@ endif()
 #
 #   MQTT           the broker, wherever it is. Off compiles the MQTT
 #                  half of common.c out and drops libmosquitto from the
-#                  link; moses_breaker then cannot be built, having no
-#                  other way to be told to shut the water.
+#                  link. moses_breaker is still built -- DBUS is its
+#                  other way in -- and moses_display is refused, being
+#                  a subscriber and nothing else. See the WITH_MQTT
+#                  rules below.
 #   LINEPROTOCOL   one line per reading on stdout, for piping into a
 #                  time-series database.
 #   DBUS           the same line on the system bus, for a consumer on
