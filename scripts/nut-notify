@@ -10,6 +10,7 @@
 set -u
 
 : "${MOSQUITTO_PUB:=/usr/bin/mosquitto_pub}"
+: "${UPSC:=/usr/bin/upsc}"
 : "${MOSES_CONFIG:=/root/moses/config.yaml}"
 
 # Read one key from the yaml config. This is slow, so it is only used as a
@@ -50,14 +51,25 @@ publish() { # <topic> <payload> [retain]
 # subscriber arriving later has not had it happen to them.
 publish "ups/${UPSNAME}/notify/${NOTIFYTYPE}" "${1:-}"
 
-# The state: one topic, retained, carrying the type alone. This is what
-# lets something that was not running at the time find out where the UPS
-# stands -- a display started an hour later, or on another machine
-# entirely, gets it the moment it subscribes.
+# The state: one topic, retained. This is what lets something that was
+# not running at the time find out where the UPS stands -- a display
+# started an hour later, or on another machine entirely, gets it the
+# moment it subscribes.
 #
 # It has to be its own topic rather than a retain flag on the event
 # above: the type is part of that topic, so retaining there would leave
 # a retained message per type -- ONLINE *and* ONBATT both delivered on
 # subscribe, in no defined order and with no timestamps, and no way to
 # tell which is the current one.
-publish "ups/${UPSNAME}/state" "${NOTIFYTYPE}" retain
+#
+# What it carries is ups.status, asked of upsd, and not the notification
+# type. A type names a transition and is a poor stand-in for a state;
+# COMMOK shows that plainly, since it says communications came back and
+# says nothing about whether the mains did. Publishing the type there
+# would have a restart during a power cut leave the panel reading "on
+# line" while the house ran on its battery.
+#
+# The type is the fallback for when upsd cannot be asked, which is
+# better than nothing and is at least right for ONLINE and ONBATT.
+state=$("$UPSC" "$UPSNAME" ups.status 2>/dev/null) || state=
+publish "ups/${UPSNAME}/state" "${state:-$NOTIFYTYPE}" retain
