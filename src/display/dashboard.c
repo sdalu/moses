@@ -651,6 +651,8 @@ static void
 report_layout(lv_obj_t *screen)
 {
     lv_area_t screen_area, row_area;
+    char      spans[128] = "";
+    size_t    len        = 0;
 
     /* Flex has not run yet at the end of dashboard_create(); positions
      * are whatever they were before this asks for them. */
@@ -660,12 +662,14 @@ report_layout(lv_obj_t *screen)
     uint32_t rows   = lv_obj_get_child_count(screen);
     int32_t  bottom = screen_area.y1;
 
+    /* Each row as the lines it spans, top to bottom. */
     for (uint32_t i = 0 ; i < rows ; i++) {
 	lv_obj_get_coords(lv_obj_get_child(screen, i), &row_area);
-	LV_LOG_USER("Layout row %u: y %d..%d (h %d)", (unsigned)i,
-		    (int)(row_area.y1 - screen_area.y1),
-		    (int)(row_area.y2 - screen_area.y1),
-		    (int)lv_area_get_height(&row_area));
+	if (len < sizeof(spans))
+	    len += snprintf(spans + len, sizeof(spans) - len, "%s%d..%d",
+			    (i > 0) ? " " : "",
+			    (int)(row_area.y1 - screen_area.y1),
+			    (int)(row_area.y2 - screen_area.y1));
 	if (row_area.y2 > bottom)
 	    bottom = row_area.y2;
     }
@@ -673,12 +677,12 @@ report_layout(lv_obj_t *screen)
     int32_t used  = bottom         - screen_area.y1 + 1;
     int32_t avail = screen_area.y2 - screen_area.y1 + 1;
 
-    if (used > avail)
-	LV_LOG_USER("Layout OVERFLOWS the panel: %d px of %d, %u rows",
-		    (int)used, (int)avail, (unsigned)rows);
-    else
-	LV_LOG_USER("Layout fits: %d px of %d, %u rows",
-		    (int)used, (int)avail, (unsigned)rows);
+    /* One line, in the daemons' "Label : value" shape rather than
+     * LVGL's log prefix, which names this file and line to no one's
+     * benefit. */
+    fprintf(stderr, "Layout               : %s, %d px of %d, rows %s\n",
+	    (used > avail) ? "OVERFLOWS" : "fits",
+	    (int)used, (int)avail, spans);
 }
 #endif
 
