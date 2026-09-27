@@ -32,9 +32,10 @@
  *
  * What it will not do is claim a daemon is gone because its name was
  * never seen. A daemon built without the bus, or one whose name the
- * bus's policy refused, is alive and merely silent here, and the
- * availability marks are MQTT's to set until a name is actually seen
- * to appear or to go. So: a name that is owned sets ONLINE, a name seen
+ * bus's policy refused, is alive and merely silent here, and its
+ * availability mark stays unknown until its name is actually seen to
+ * appear or to go -- its readings grey out on --stale like any silent
+ * one's. So: a name that is owned sets ONLINE, a name seen
  * to lose its owner sets OFFLINE, and a name with no owner at startup
  * sets nothing.
  *
@@ -65,6 +66,12 @@
 
 #define SRC_IFACE		"moses.Readings"
 #define SRC_NAMESPACE		"moses"
+
+/* The name this program owns. It serves nothing under it: owning it is
+ * how the display finds out whether dbus/moses.conf is loaded -- the bus
+ * has no call that reports its policy, only one that applies it -- and
+ * it is what `busctl status moses.display` finds. */
+#define SRC_OWN_NAME		"moses.display"
 
 /* How long the bus thread waits inside the bus before looking at the
  * fetches queued by the filter and at whether it was asked to stop. */
@@ -102,6 +109,9 @@ static struct {
     pthread_t     thread;
     volatile bool stopping;
     bool          started;
+
+    /* What asking for SRC_OWN_NAME came to, on the first connection. */
+    enum source_dbus_name name;
 
     /* Set by the filter, acted on by the loop: a daemon whose Lines
      * are to be fetched. The filter runs inside dispatch, and a
@@ -379,6 +389,36 @@ src_connect(void)
 }
 
 
+/*
+ * Ask for SRC_OWN_NAME, not queueing behind anyone who has it already.
+ *
+ * Refused is the policy talking: dbus/moses.conf is not installed, or
+ * this is not running as the user it lets own the name.
+ */
+static enum source_dbus_name
+src_own(DBusConnection *c)
+{
+    DBusError err;
+    dbus_error_init(&err);
+
+    int rc = dbus_bus_request_name(c, SRC_OWN_NAME,
+				   DBUS_NAME_FLAG_DO_NOT_QUEUE, &err);
+    if (dbus_error_is_set(&err)) {
+	LOG("D-Bus: cannot own " SRC_OWN_NAME ": %s", err.message);
+	dbus_error_free(&err);
+	return SOURCE_DBUS_NAME_REFUSED;
+    }
+    switch (rc) {
+    case DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER:
+    case DBUS_REQUEST_NAME_REPLY_ALREADY_OWNER:
+	return SOURCE_DBUS_NAME_OWNED;
+    default:
+	LOG("D-Bus: " SRC_OWN_NAME " is owned by another process");
+	return SOURCE_DBUS_NAME_TAKEN;
+    }
+}
+
+
 static void
 src_backoff(void)
 {
@@ -400,6 +440,7 @@ src_thread(void *arg)
 		continue;
 	    }
 	    LOG("D-Bus: back on the system bus");
+	    (void)src_own(c);		/* logged when it is not had */
 	}
 
 	/* Everything that is there now. Signals are matched before this
@@ -437,10 +478,12 @@ src_thread(void *arg)
 //== Interface =========================================================
 
 int
-source_dbus_start(void)
+source_dbus_start(enum source_dbus_name *name)
 {
-    if (src.started)
+    if (src.started) {
+	*name = src.name;
 	return 0;
+    }
 
     if (! dbus_threads_init_default()) {
 	LOG("D-Bus: cannot initialise threading");
@@ -456,6 +499,7 @@ source_dbus_start(void)
 	errno = ECONNREFUSED;
 	return -1;
     }
+    src.name = *name = src_own(c);
 
     src.stopping = false;
     memset((void *)src.fetch, 0, sizeof(src.fetch));

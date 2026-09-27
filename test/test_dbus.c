@@ -235,7 +235,11 @@ main(void)
     /* ... and the consumer arrives afterwards. It must find the index
      * by asking, not by waiting for the next report, see the producer
      * as online, and stamp the reading with the line's own time. */
-    CHECK(source_dbus_start() == 0);
+    enum source_dbus_name name;
+    CHECK(source_dbus_start(&name) == 0);
+    /* A session bus lets anyone own anything, so the name is had; what
+     * the system bus's policy decides is dbus/moses.conf's to test. */
+    CHECK(name == SOURCE_DBUS_NAME_OWNED);
     CHECK(wait_for(index_known_and_online, DEADLINE_MS));
     {
 	struct model m;

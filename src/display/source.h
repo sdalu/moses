@@ -30,6 +30,11 @@
  *                retention and the liveness MQTT has, without the
  *                network; see source-dbus.c for what it will not claim.
  *
+ * source-mqtt and source-dbus are not both read for the readings:
+ * --source picks one, so a figure is never written by two sources
+ * stamping time two different ways. The broker keeps nut-notify's UPS
+ * events whichever it is, since nothing else carries them.
+ *
  * All three write the model and nothing else, which is what lets them be
  * three files rather than three special cases inside main().
  */
@@ -49,6 +54,10 @@ struct mqtt;				// common.h
  * broker carrying more than one installation tells them apart --
  * `water-breaker/moses`.
  *
+ * `readings` says whether the daemons' own topics are subscribed to at
+ * all. It is false when --source put them on the system bus, which
+ * leaves the broker only nut-notify's UPS state to carry.
+ *
  * `ups` names the UPS whose nut-notify events to watch, or is NULL to
  * watch every UPS on the broker. `ups_from_events` says whether those
  * events are the only thing that knows about the UPS -- true when
@@ -58,8 +67,8 @@ struct mqtt;				// common.h
  * Returns 0 once connected, or when MQTT is not configured at all --
  * the screen is then simply empty, which is worth seeing. < 0 on error.
  */
-int source_mqtt_start(struct mqtt *handler, const char *ups,
-		      bool ups_from_events);
+int source_mqtt_start(struct mqtt *handler, bool readings,
+		      const char *ups, bool ups_from_events);
 
 /**
  * Start polling upsd every `interval` seconds, on its own thread.
@@ -93,6 +102,13 @@ const char *source_nut_name(void);
 
 
 #ifdef WITH_DBUS
+/** What asking for the name moses.display came to. */
+enum source_dbus_name {
+    SOURCE_DBUS_NAME_OWNED = 0,	/**< the policy is loaded		*/
+    SOURCE_DBUS_NAME_REFUSED,	/**< it is not, or not for this user	*/
+    SOURCE_DBUS_NAME_TAKEN,	/**< another moses_display has it	*/
+};
+
 /**
  * Reach the system bus and watch the daemons on it, on its own thread.
  *
@@ -105,9 +121,16 @@ const char *source_nut_name(void);
  * DBUS_SYSTEM_BUS_ADDRESS in the environment points it elsewhere, which
  * is how test/test_dbus.c runs this against a private bus.
  *
+ * Also asks for the name moses.display, and says in `name` what came
+ * of it. dbus/moses.conf lets root own it, so owning it is the bus's
+ * own word that the policy is loaded -- which a file on disk is not,
+ * and which a daemon's name is not either: at boot the daemons may not
+ * have started yet. Nothing is served under it. Lost with the bus, it
+ * is asked for again when the bus comes back.
+ *
  * @return < 0 if the bus could not be reached or the thread not started
  */
-int source_dbus_start(void);
+int source_dbus_start(enum source_dbus_name *name);
 
 /**
  * Leave the bus and stop reading. Called on the way out.

@@ -77,8 +77,12 @@ A daemon never waits on the bus: sending queues and returns, and a bus
 that is missing or refuses the name is logged once and retried in the
 background.
 
-`dbus/moses.conf` lets root own `moses.*` and call `SetState`, and
-anyone read the properties; install it as
+`moses_display` owns `moses.display` and serves nothing under it:
+owning it is how the display learns the policy is loaded
+([`--source`](programs.md#moses_display)).
+
+`dbus/moses.conf` lets root own those four names and call `SetState`,
+and anyone read the properties; install it as
 [Install](building.md#install) shows. Without it the daemons log
 `cannot own moses.…` once and carry on without the bus.
 

@@ -47,7 +47,22 @@ arrival instead. *The last will*: owning a name is being alive, and
 `NameOwnerChanged` says so in milliseconds rather than after a
 keepalive lapses. A name never seen marks nothing, though: a daemon
 built without the bus, or refused by the policy, is alive and merely
-silent there, and MQTT's availability keeps that say.
+silent there, and its readings grey out on staleness like any other.
+
+`moses_display` reads one of the two, never both (`--source`). Read
+together, every figure had two writers that stamped time two ways --
+the line's own time against the moment a message arrived -- and the last
+to arrive won; and the broker, dialled first, could take the panel down
+at start in exactly the outage the bus is there for. `auto` chooses the
+bus when its policy is loaded, not when a daemon is on it: at boot the
+panel may start before the daemons, and a bus without the policy never
+carries anything however long it is watched. The bus has no call that
+reports its policy, only ones that apply it, so the display owns a name
+of its own, `moses.display`, that only the policy grants -- the bus's
+own answer, where finding `moses.conf` on disk would be a guess about
+where `dbus-daemon` looks and whether it has read it. nut-notify's UPS
+events are on the broker alone, so it is kept for those either way, and
+an unreachable one then costs the UPS and nothing else.
 
 `moses_display` is a subscriber and nothing else, which is why
 `WITH_MQTT=OFF` refuses it outright rather than building something with
@@ -88,7 +103,7 @@ last will, and retention is what forces the split: on a single topic one
 daemon's `offline` would sit there masking the others. The bus answers
 the same question by name ownership, which is why a name never seen marks
 nothing -- a daemon built without the bus is alive and merely silent
-there, and MQTT keeps that say.
+there.
 
 
 A sink never delays a reading

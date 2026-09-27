@@ -70,8 +70,17 @@
 #define STALE_AFTER		150	/* seconds			*/
 
 
+/* Where the daemons' readings are read from. See main(). */
+enum source {
+    SOURCE_AUTO = 0,
+    SOURCE_MQTT,
+    SOURCE_DBUS,
+};
+
+
 struct display {
     struct mqtt   mqtt;
+    enum source   source;		/**< --source			*/
     bool          use_upsd;		/**< --ups given: poll upsd here */
     char         *ups;			/**< the UPS, NULL to discover	*/
     unsigned long ups_interval;
@@ -93,6 +102,7 @@ struct display {
 
 static struct display display = {
     .mqtt         = MQTT_INITIALIZER(),
+    .source       = SOURCE_AUTO,
     .use_upsd     = false,
     .ups          = NULL,
     .ups_interval = UPS_INTERVAL,
@@ -159,15 +169,16 @@ device_name(const char *prefix)
 static void
 display_parse_config(int argc, char **argv, struct display *d)
 {
-    static const char *const shortopts = "+i:s:u::ch";
+    static const char *const shortopts = "+i:s:u::S:ch";
 
     struct option longopts[] = {
 	{ "interval",	required_argument,	NULL, 'i' },
 	{ "stale",	required_argument,	NULL, 's' },
 	{ "ups",	optional_argument,	NULL, 'u' },
+	{ "source",	required_argument,	NULL, 'S' },
 	{ "check",	no_argument,		NULL, 'c' },
 	{ "help",	no_argument,		NULL, 'h' },
-	{ NULL }
+	{ 0 }
     };
 
     int opti, optc;
@@ -205,6 +216,20 @@ display_parse_config(int argc, char **argv, struct display *d)
 		d->ups = argv[optind++];
 	    }
 	    break;
+	case 'S':
+	    if      (strcmp(optarg, "auto") == 0)
+		d->source = SOURCE_AUTO;
+	    else if (strcmp(optarg, "mqtt") == 0)
+		d->source = SOURCE_MQTT;
+	    else if (strcmp(optarg, "dbus") == 0)
+#ifdef WITH_DBUS
+		d->source = SOURCE_DBUS;
+#else
+		USAGE_DIE("--source=dbus wants a build with WITH_DBUS");
+#endif
+	    else
+		USAGE_DIE("invalid source (auto, mqtt, dbus)");
+	    break;
 	case 'c':
 	    d->check_only = true;
 	    break;
@@ -217,6 +242,8 @@ display_parse_config(int argc, char **argv, struct display *d)
 	    printf("  -u, --ups[=NAME]          poll upsd here, for charge and remaining time;\n");
 	    printf("                            without NAME, the first UPS upsd lists\n");
 	    printf("                            (omit -u entirely: UPS state from MQTT events)\n");
+	    printf("  -S, --source=WHERE        the daemons' readings: mqtt, dbus, or auto\n");
+	    printf("                            (default: dbus if it may own moses.display)\n");
 	    printf("  -c, --check               bring the panel up, report, and exit;\n");
 	    printf("                            the same checks a normal start makes\n");
 	    printf("\n");
@@ -250,6 +277,7 @@ main(int argc, char *argv[])
     const struct backend_info *info = backend_info();
     LOG("Panel                : %s, %" LV_PRIu32 "x%" LV_PRIu32,
 	info->name, info->hor_res, info->ver_res);
+    (void)info;				/* LOG() is nothing without WITH_LOG */
 
     /* --check wanted the panel brought up and nothing else. Everything
      * that can be wrong about the wiring, the pins and the SPI device has
@@ -291,23 +319,73 @@ main(int argc, char *argv[])
      * the UPS it settled on -- given or discovered -- so a second UPS
      * on the broker cannot write over it; without, they are wildcarded
      * and are what the UPS state is made of. */
-    if (source_mqtt_start(&d->mqtt,
-			  d->use_upsd ? source_nut_name() : NULL,
-			  ! d->use_upsd) < 0)
-	DIE(2, "failed to subscribe to MQTT");
-
+    /*
+     * The daemons' readings come from one place, which --source picks.
+     *
+     * The bus is tried first unless the broker was asked for, and it
+     * settles auto by owning moses.display: the bus reports no policy,
+     * it only applies it, and dbus/moses.conf is what lets that name be
+     * owned. Not by whether a daemon is on the bus right now -- at boot
+     * this may well start before they do, and a bus without the policy
+     * never carries anything however long it is watched.
+     *
+     * The bus, once chosen, is fatal to be without: a display that
+     * looked like it was reading it and was not would be worse. Another
+     * moses_display holding the name is fatal either way -- two would
+     * fight over the panel -- and a refused name, asked for by hand, is
+     * logged and read through regardless.
+     */
+    enum source source = d->source;
+    const char  *why    = NULL;
 #ifdef WITH_DBUS
-    /* The system bus, carrying the same readings as MQTT without
-     * leaving the machine, plus what each daemon last said and whether
-     * it is still there. Fatal when the bus cannot be reached at all:
-     * a machine built with WITH_DBUS is one that has a bus, so a
-     * failure here is a misconfiguration rather than a condition to
-     * carry on through -- and carrying on would leave a display that
-     * looks like it is reading the bus and is not. A bus that goes
-     * away later is retried. See src/display/source-dbus.c. */
-    if (source_dbus_start() < 0)
-	DIE(2, "failed to reach the system bus");
+    if (source != SOURCE_MQTT) {
+	enum source_dbus_name name;
+
+	if (source_dbus_start(&name) < 0) {
+	    if (source == SOURCE_DBUS)
+		DIE(2, "failed to reach the system bus");
+	    source = SOURCE_MQTT;
+	    why    = "no system bus";
+	} else if (name == SOURCE_DBUS_NAME_TAKEN) {
+	    DIE(2, "another moses_display owns moses.display");
+	} else if (name == SOURCE_DBUS_NAME_OWNED) {
+	    if (source == SOURCE_AUTO)
+		why = "owns moses.display";
+	    source = SOURCE_DBUS;
+	} else if (source == SOURCE_AUTO) {
+	    source_dbus_stop();
+	    source = SOURCE_MQTT;
+	    why    = "moses.display refused, no bus policy";
+	}
+    }
 #endif
+    if (source == SOURCE_AUTO)		/* built without the bus */
+	source = SOURCE_MQTT;
+    LOG("Source               : %s%s%s%s",
+	(source == SOURCE_DBUS) ? "dbus" : "mqtt",
+	why ? " (auto: " : "", why ? why : "", why ? ")" : "");
+    (void)why;
+
+    /* The broker, for the readings when it is their source, and for
+     * nut-notify's UPS events either way -- they are only ever on the
+     * broker. With upsd in play they name the UPS it settled on --
+     * given or discovered -- so a second UPS on the broker cannot write
+     * over it; without, they are wildcarded and are what the UPS state
+     * is made of.
+     *
+     * Fatal only when the broker is where the readings come from. With
+     * the bus as their source, a broker that cannot be reached costs
+     * the UPS events and nothing else, and dying over it would take the
+     * panel down in the one situation the bus is there for: the network
+     * being down when this starts. */
+    if (source_mqtt_start(&d->mqtt, source == SOURCE_MQTT,
+			  d->use_upsd ? source_nut_name() : NULL,
+			  ! d->use_upsd) < 0) {
+	if (source == SOURCE_MQTT)
+	    DIE(2, "failed to subscribe to MQTT");
+	LOG("MQTT unreachable, carrying on without the UPS events");
+    }
+
 
     /* Unlike the daemons this one does clean up: the backlight is a
      * lit panel left behind, not a valve, so there is something worth
@@ -326,7 +404,7 @@ main(int argc, char *argv[])
     }
 
 #ifdef WITH_DBUS
-    source_dbus_stop();
+    source_dbus_stop();			/* nothing when it was not started */
 #endif
     backend_deinit();
     return EXIT_SUCCESS;
