@@ -130,7 +130,7 @@ configuration the same questions without a built binary.
   the UPS from `upsd`, and no broker at all, so the panel keeps working
   while the network is down. Needs `WITH_DBUS`.
 * *`mqtt`*: the broker, the way for a display on any other machine. The
-  UPS as the next section says.
+  UPS as the next section says. Needs `WITH_MQTT`.
 * *`auto`* picks `local` when the display may own the bus name
   `moses.display`, and `mqtt` otherwise -- or when there is no system bus
   at all. [`dbus/moses.conf`](interfaces.md#the-system-bus) lets root own

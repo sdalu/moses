@@ -79,6 +79,7 @@ enum source {
     SOURCE_AUTO = 0,
     SOURCE_MQTT,			/**< the broker			*/
     SOURCE_LOCAL,			/**< the bus and upsd, no broker */
+    SOURCE_NONE,			/**< built with neither: upsd only */
 };
 
 
@@ -264,7 +265,11 @@ display_parse_config(int argc, char **argv, struct display *d)
 	    if      (strcmp(optarg, "auto") == 0)
 		d->source = SOURCE_AUTO;
 	    else if (strcmp(optarg, "mqtt") == 0)
+#ifdef WITH_MQTT
 		d->source = SOURCE_MQTT;
+#else
+		USAGE_DIE("--source=mqtt wants a build with WITH_MQTT");
+#endif
 	    else if (strcmp(optarg, "local") == 0)
 #ifdef WITH_DBUS
 		d->source = SOURCE_LOCAL;
@@ -377,23 +382,41 @@ main(int argc, char *argv[])
 		why = "owns moses.display";
 	    source = SOURCE_LOCAL;
 	} else if (source == SOURCE_AUTO) {
+#ifdef WITH_MQTT
 	    source_dbus_stop();
 	    source = SOURCE_MQTT;
 	    why    = "moses.display refused, no bus policy";
+#else
+	    /* No broker to fall back on: the bus read without the name
+	     * beats nothing, as --source=local by hand already does. */
+	    source = SOURCE_LOCAL;
+	    why    = "moses.display refused, built without the broker";
+#endif
 	}
     }
 #endif
+#ifdef WITH_MQTT
     if (source == SOURCE_AUTO)		/* built without the bus */
 	source = SOURCE_MQTT;
+#else
+    /* Nothing to fall back on: built without the broker, so what auto
+     * could not make local reads nothing but upsd. */
+    if ((source == SOURCE_AUTO) || (source == SOURCE_MQTT)) {
+	source = SOURCE_NONE;
+	why    = why ? why : "built without the bus or the broker";
+    }
+#endif
     LOG("Source               : %s%s%s%s",
-	(source == SOURCE_LOCAL) ? "local" : "mqtt",
+	(source == SOURCE_LOCAL) ? "local" :
+	(source == SOURCE_MQTT)  ? "mqtt"  : "none",
 	why ? " (auto: " : "", why ? why : "", why ? ")" : "");
     (void)why;
 
     /* Created once the source is known: the name at the top of it
-     * depends on whether this is local. */
+     * depends on whether everything shown is this machine's -- local,
+     * or none, which is upsd here and nothing else. */
     dashboard_create(backend_accent_color(), d->stale_after,
-		     device_name(source == SOURCE_LOCAL));
+		     device_name(source != SOURCE_MQTT));
 
     /*
      * The UPS: upsd on this machine when local, or when --ups asks for
@@ -412,8 +435,10 @@ main(int argc, char *argv[])
 	source_nut_probe(d->ups);
 	if (source_nut_start(d->ups, d->ups_interval) < 0)
 	    DIE(2, "failed to start polling upsd");
-    } else {
+    } else if (source == SOURCE_MQTT) {
 	LOG("UPS                  : from MQTT events (no --ups given)");
+    } else {
+	LOG("UPS                  : none (no --ups, and no broker)");
     }
 
     /* The broker, when it is the source. Its UPS events are watched
@@ -421,10 +446,12 @@ main(int argc, char *argv[])
      * or discovered -- so a second UPS on the broker cannot write over
      * it, and they repaint at once on a change; without upsd they are
      * wildcarded and are what the UPS state is made of. */
+#ifdef WITH_MQTT
     if ((source == SOURCE_MQTT) &&
 	(source_mqtt_start(&d->mqtt, use_upsd ? source_nut_name() : NULL,
 			   ! use_upsd) < 0))
 	DIE(2, "failed to subscribe to MQTT");
+#endif
 
     /* Unlike the daemons this one does clean up: the backlight is a
      * lit panel left behind, not a valve, so there is something worth

@@ -66,9 +66,10 @@ where `dbus-daemon` looks and whether it has read it. The UPS under
 broker alone, and keeping a broker for them would put the network back
 under a panel that exists to do without it.
 
-`moses_display` is a subscriber and nothing else, which is why
-`WITH_MQTT=OFF` refuses it outright rather than building something with
-nothing to show. `moses_breaker` has two ways in -- `state/set` on the
+`moses_display` is built whatever the sinks are. Without `WITH_MQTT`
+it reads the bus (`--source=local`); without the bus either, it shows
+the UPS from `upsd` and dashes for the rest -- still a panel, and said
+at configure time rather than refused. `moses_breaker` has two ways in -- `state/set` on the
 broker, `SetState` on the bus -- and is built as long as it has one.
 
 Who may command the valve is the bus's policy and not the daemon's

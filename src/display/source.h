@@ -63,8 +63,10 @@ struct mqtt;				// common.h
  * Returns 0 once connected, or when MQTT is not configured at all --
  * the screen is then simply empty, which is worth seeing. < 0 on error.
  */
+#ifdef WITH_MQTT
 int source_mqtt_start(struct mqtt *handler, const char *ups,
 		      bool ups_from_events);
+#endif
 
 /**
  * Start polling upsd every `interval` seconds, on its own thread.

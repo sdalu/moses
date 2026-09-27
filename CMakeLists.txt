@@ -27,9 +27,9 @@ endif()
 #   MQTT           the broker, wherever it is. Off compiles the MQTT
 #                  half of common.c out and drops libmosquitto from the
 #                  link. moses_breaker is still built -- DBUS is its
-#                  other way in -- and moses_display is refused, being
-#                  a subscriber and nothing else. See the WITH_MQTT
-#                  rules below.
+#                  other way in -- and so is moses_display, which then
+#                  reads the bus, or only upsd. See the WITH_MQTT rules
+#                  below.
 #   LINEPROTOCOL   one line per reading on stdout, for piping into a
 #                  time-series database.
 #   DBUS           the same line on the system bus, for a consumer on
@@ -201,9 +201,11 @@ endif()
 # protocol on stdout: src/common.c compiles its MQTT half out and
 # libmosquitto leaves the link entirely.
 #
-# One program cannot mean anything without it, and is refused rather
-# than built into something useless: moses_display is a subscriber and
-# nothing else.
+# moses_display has other ways to its figures: the system bus with
+# WITH_DBUS (--source=local), and upsd on this machine for the UPS
+# (--ups). With both off it is a panel showing the UPS and dashes, which
+# is still a panel -- said at configure time, below, rather than
+# refused.
 #
 # moses_breaker has two ways to be commanded, `state/set` over the
 # broker and SetState over the system bus, and is built as long as it
@@ -217,10 +219,15 @@ endif()
 # hardware and write it out.
 #
 if (NOT WITH_MQTT)
-    if (WITH_DISPLAY)
-        message(FATAL_ERROR
-            "WITH_DISPLAY needs WITH_MQTT: moses_display only ever "
-            "subscribes, so there is nothing for it to show without a broker")
+    if (WITH_DISPLAY AND WITH_DBUS)
+        message(STATUS
+            "WITH_MQTT=OFF: moses_display reads the system bus only "
+            "(--source=local), and the UPS from upsd")
+    elseif (WITH_DISPLAY)
+        message(STATUS
+            "WITH_MQTT=OFF and WITH_DBUS=OFF: moses_display has no source "
+            "for the readings -- it shows the UPS from upsd (--ups) and "
+            "dashes for the rest")
     endif()
     if (WITH_BREAKER AND WITH_DBUS)
         message(STATUS
@@ -604,10 +611,16 @@ if (WITH_DISPLAY)
         src/breaker_state.c		# the `state` payload vocabulary, shared
         src/display/dashboard.c
         src/display/model.c
-        src/display/payload.c
-        src/display/source-mqtt.c
+        src/display/payload.c		# the numbers and text, for either source
         src/display/source-nut.c
         src/display/ups_estimate.c)
+
+    # The broker's half. Only under WITH_MQTT, which is also what brings
+    # libmosquitto in.
+    if (WITH_MQTT)
+        target_sources(moses_display PRIVATE
+            src/display/source-mqtt.c)
+    endif()
 
     # The bus's consuming half. Only under WITH_DBUS, which is also what
     # puts the producing half into the daemons -- there is no point
