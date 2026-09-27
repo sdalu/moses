@@ -32,6 +32,7 @@ option(WITH_WERROR   "Treat warnings as errors for moses code (CI)"        OFF)
 option(WITH_ANALYZER "Run the GCC static analyzer on moses code (CI)"      OFF)
 option(WITH_TESTS    "Build the unit tests"                                OFF)
 option(WITH_DAEMONS  "Build the three daemons (needs mosquitto, and M-Bus)" ON)
+option(WITH_MQTT     "Speak MQTT (off drops libmosquitto entirely)"        ON)
 set(MQTT_TOPIC_PREFIX "water-breaker" CACHE STRING "Default prefix for topics")
 
 
@@ -52,6 +53,9 @@ if (WITH_LINEPROTOCOL)
     add_compile_definitions(WITH_LINEPROTOCOL)
 endif()
 add_compile_definitions(MQTT_TOPIC_PREFIX="${MQTT_TOPIC_PREFIX}")
+if (WITH_MQTT)
+    add_compile_definitions(WITH_MQTT)
+endif()
 
 
 #
@@ -73,14 +77,52 @@ find_package(Threads REQUIRED)
 # configured at all -- not even to build a test that never goes near
 # M-Bus, on a machine that could not have run the daemons anyway. That is
 # now the normal case: WITH_DISPLAY_TESTS alone needs neither library.
+# Three separate questions, and conflating the first two costs the
+# support library: whether anything needs moses_common at all, whether
+# that needs libmosquitto linked into it, and whether M-Bus is wanted.
+set(NEED_COMMON    OFF)
 set(NEED_MOSQUITTO OFF)
 set(NEED_MBUS      OFF)
 if (WITH_DAEMONS)
-    set(NEED_MOSQUITTO ON)      # moses_common, and so all three daemons
-    set(NEED_MBUS      ON)      # moses_watermeter
+    set(NEED_COMMON ON)               # every daemon links it
+    set(NEED_MBUS   ON)               # moses_watermeter
 endif()
 if (WITH_DISPLAY)
-    set(NEED_MOSQUITTO ON)      # moses_display subscribes
+    set(NEED_COMMON ON)               # moses_display links it too
+endif()
+if (NEED_COMMON AND WITH_MQTT)
+    set(NEED_MOSQUITTO ON)            # ... and only then is the library wanted
+endif()
+
+#
+# WITH_MQTT=OFF is for a machine that wants nothing but the line
+# protocol on stdout: src/common.c compiles its MQTT half out and
+# libmosquitto leaves the link entirely.
+#
+# Two of the programs cannot mean anything without it, and are refused
+# rather than built into something useless:
+#
+#   moses_breaker   `state/set` is the only way to command the valve, so
+#                   without MQTT it would open a GPIO and wait forever.
+#                   A valve controller that cannot be told to close is
+#                   worse than no valve controller, because it looks
+#                   like one.
+#   moses_display   it is a subscriber and nothing else.
+#
+# moses_watermeter and moses_sensors still do their job: they read their
+# hardware and write it out.
+#
+if (NOT WITH_MQTT)
+    if (WITH_DISPLAY)
+        message(FATAL_ERROR
+            "WITH_DISPLAY needs WITH_MQTT: moses_display only ever "
+            "subscribes, so there is nothing for it to show without a broker")
+    endif()
+    if (WITH_DAEMONS)
+        message(STATUS
+            "WITH_MQTT=OFF: building moses_watermeter and moses_sensors only "
+            "(moses_breaker cannot be commanded without MQTT)")
+    endif()
 endif()
 
 # Mosquitto (MQTT) -- used by everything that speaks to the broker
@@ -139,13 +181,18 @@ endforeach()
 # Shared moses support code (MQTT wrapper, parsers, ...)
 #
 
-if (NEED_MOSQUITTO)
+if (NEED_COMMON)
 add_library(moses_common STATIC src/common.c)
-target_include_directories(moses_common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src
-                                               ${MOSQUITTO_INCLUDE_DIR})
+target_include_directories(moses_common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+if (WITH_MQTT)
+    target_include_directories(moses_common PUBLIC ${MOSQUITTO_INCLUDE_DIR})
+endif()
 target_compile_definitions(moses_common PUBLIC PUT_CLOCK=CLOCK_REALTIME
                                                INTERVAL_CLOCK=CLOCK_REALTIME)
-target_link_libraries(moses_common PUBLIC ${MOSQUITTO_LIBRARY} Threads::Threads m)
+target_link_libraries(moses_common PUBLIC Threads::Threads m)
+if (WITH_MQTT)
+    target_link_libraries(moses_common PUBLIC ${MOSQUITTO_LIBRARY})
+endif()
 endif()
 
 
@@ -171,10 +218,12 @@ target_include_directories(moses_watermeter PRIVATE ${MBUS_INCLUDE_DIR})
 target_link_libraries(moses_watermeter PRIVATE moses_gpio ${MBUS_LIBRARY})
 
 #
-# Breaker -- drive the solenoid valve relay
+# Breaker -- drive the solenoid valve relay. Needs MQTT: see above.
 #
-add_executable(moses_breaker src/breaker.c src/breaker_state.c)
-target_link_libraries(moses_breaker PRIVATE moses_gpio)
+if (WITH_MQTT)
+    add_executable(moses_breaker src/breaker.c src/breaker_state.c)
+    target_link_libraries(moses_breaker PRIVATE moses_gpio)
+endif()
 
 #
 # Sensors -- read the BME280 (temperature, pressure, humidity)

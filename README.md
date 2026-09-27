@@ -769,6 +769,7 @@ make  -C build
 | `WITH_DISPLAY`      | Build [`moses_display`](#moses_display), the LVGL front panel. Off by default; needs a C++ compiler (LVGL's build enables the language even though nothing here uses it) and pulls in the `3rd/lvgl` submodule, which is a long compile on a Pi Zero. The three daemons build with just a C compiler. |
 | `WITH_DISPLAY_TESTS`| Build the [screenshot tests](#tests). Needs LVGL but no panel, so it stands alone on a machine that cannot build `moses_display` at all. |
 | `WITH_DAEMONS`      | Build the three daemons (**on** by default). Turn it off to build only what needs neither mosquitto nor M-Bus — those libraries are then not looked for either, which is what lets the tests configure on a machine that has neither. |
+| `WITH_MQTT`         | Speak MQTT (**on** by default). Off compiles the MQTT half of `src/common.c` out and drops libmosquitto from the link entirely, for a machine that wants nothing but [line protocol](#line-protocol-output) on stdout. `moses_watermeter` and `moses_sensors` still do their job; `moses_breaker` is **not built** — `state/set` is the only way to command the valve, so without a broker it would open a GPIO and wait forever, which is worse than absent because it looks like a valve controller. `WITH_DISPLAY` is refused outright, being a subscriber and nothing else. |
 | `WITH_TESTS`        | Build the unit tests (off by default, so a normal build skips them); see [Tests](#tests). |
 | `MQTT_TOPIC_PREFIX` | Change the default prefix applied to topic (`water-breaker`)|
 

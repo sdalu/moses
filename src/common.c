@@ -26,7 +26,9 @@
 #include <sched.h>
 #include <sys/mman.h>
 
+#ifdef WITH_MQTT
 #include <mosquitto.h>
+#endif
 
 #include "common.h"
 
@@ -171,8 +173,38 @@ reduced_latency(void)
 
 
 /************************************************************************
+ * Topics                                                               *
+ ************************************************************************/
+
+// Where every topic name starts. Not behind WITH_MQTT: the prefix names
+// the installation as well as its topics, and moses_display reads the
+// last segment of it for the name on the panel.
+const char *
+mqtt_topic_prefix(void)
+{
+    const char *prefix = getenv("MQTT_TOPIC_PREFIX");
+    return prefix ? prefix : MQTT_TOPIC_PREFIX;
+}
+
+
+
+/************************************************************************
  * Mosquitto                                                            *
  ************************************************************************/
+
+/*
+ * Everything below is compiled out by WITH_MQTT=OFF, and replaced by the
+ * stubs at the foot of this file.
+ *
+ * Nothing in the daemons changes for that, because they already cope
+ * with a broker that was never configured: mqtt_connect() answers 0 for
+ * "disabled" and each of them treats it as success, and MQTT_PUBLISH()
+ * reaches a mqtt_publish() that returns early with no handler. Compiling
+ * it out only makes that state permanent -- and drops libmosquitto from
+ * the link, which is the point on a machine that wants nothing but the
+ * line protocol on stdout.
+ */
+#ifdef WITH_MQTT
 
 // Callback called when the client receives a CONNACK message from the broker.
 static void
@@ -367,13 +399,6 @@ mqtt_enabled(const struct mqtt *mqtt)
     return mqtt->cfg.host != NULL;
 }
 
-const char *
-mqtt_topic_prefix(void)
-{
-    const char *prefix = getenv("MQTT_TOPIC_PREFIX");
-    return prefix ? prefix : MQTT_TOPIC_PREFIX;
-}
-
 void
 mqtt_config_from_env(struct mqtt *mqtt)
 {
@@ -459,3 +484,77 @@ mqtt_start(struct mqtt *mqtt)
     // Done
     return 0;
 }
+
+#else	/* ! WITH_MQTT */
+
+/*
+ * MQTT compiled out.
+ *
+ * These are the answers the rest of the tree already knows how to
+ * handle, made permanent. mqtt_config_from_env() deliberately does
+ * nothing, so cfg.host stays NULL and mqtt_enabled() is false without
+ * being told to be: a build without MQTT cannot be talked into thinking
+ * it has a broker by an MQTT_HOST left in the environment.
+ */
+
+int
+mqtt_publish(struct mqtt *mqtt, const char *topic, int qos, bool retain,
+	     const char *fmt, ...)
+{
+    (void)mqtt; (void)topic; (void)qos; (void)retain; (void)fmt;
+    return 0;
+}
+
+int
+mqtt_init(struct mqtt *mqtt, unsigned int subcount,
+	  struct mqtt_subscription *sub)
+{
+    (void)mqtt; (void)subcount; (void)sub;
+    return 0;
+}
+
+int
+mqtt_start(struct mqtt *mqtt)
+{
+    (void)mqtt;
+    return -1;
+}
+
+int
+mqtt_destroy(struct mqtt *mqtt)
+{
+    (void)mqtt;
+    return 0;
+}
+
+void
+mqtt_set_availability(struct mqtt *mqtt, char *topic,
+		      char *online, char *offline, int qos)
+{
+    (void)mqtt; (void)topic; (void)online; (void)offline; (void)qos;
+}
+
+int
+mqtt_connect(struct mqtt *mqtt,
+	     unsigned int subcount, struct mqtt_subscription *sub,
+	     char *avail_topic, mqtt_message_cb on_message)
+{
+    (void)mqtt; (void)subcount; (void)sub; (void)avail_topic;
+    (void)on_message;
+    return 0;				/* 0 is "disabled", not an error */
+}
+
+void
+mqtt_config_from_env(struct mqtt *mqtt)
+{
+    (void)mqtt;
+}
+
+bool
+mqtt_enabled(const struct mqtt *mqtt)
+{
+    (void)mqtt;
+    return false;
+}
+
+#endif	/* WITH_MQTT */

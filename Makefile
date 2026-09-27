@@ -32,6 +32,7 @@ WITH_LOG	?= no
 WITH_LINEPROTOCOL ?= no
 WITH_TESTS	?= no
 WITH_DAEMONS	?= yes
+WITH_MQTT	?= yes
 WITH_DISPLAY	?= no
 WITH_DISPLAY_TESTS ?= no
 WITH_WERROR	?= no
@@ -52,6 +53,7 @@ CMAKEFLAGS	 = -DWITH_LOG=$(ON_$(WITH_LOG))
 CMAKEFLAGS	+= -DWITH_LINEPROTOCOL=$(ON_$(WITH_LINEPROTOCOL))
 CMAKEFLAGS	+= -DWITH_TESTS=$(ON_$(WITH_TESTS))
 CMAKEFLAGS	+= -DWITH_DAEMONS=$(ON_$(WITH_DAEMONS))
+CMAKEFLAGS	+= -DWITH_MQTT=$(ON_$(WITH_MQTT))
 CMAKEFLAGS	+= -DWITH_DISPLAY=$(ON_$(WITH_DISPLAY))
 CMAKEFLAGS	+= -DWITH_DISPLAY_TESTS=$(ON_$(WITH_DISPLAY_TESTS))
 CMAKEFLAGS	+= -DWITH_WERROR=$(ON_$(WITH_WERROR))
@@ -109,7 +111,8 @@ help:						## show this help (the default)
 	@echo ''
 	@echo 'Build options (yes/no; see `make options`):'
 	@printf '  %-16s %s\n'						      \
-	    WITH_DAEMONS	'$(WITH_DAEMONS)  (the three daemons; needs mosquitto, and M-Bus)' \
+	    WITH_DAEMONS	'$(WITH_DAEMONS)  (the three daemons; needs M-Bus)' \
+	    WITH_MQTT		'$(WITH_MQTT)  (no drops libmosquitto, and moses_breaker with it)' \
 	    WITH_DISPLAY	'$(WITH_DISPLAY)  (moses_display; pulls in LVGL, a long compile)' \
 	    WITH_DISPLAY_TESTS	'$(WITH_DISPLAY_TESTS)  (the screenshot tests; needs LVGL, not a panel)' \
 	    WITH_LOG		'$(WITH_LOG)  (log messages on stderr)'	      \
@@ -215,6 +218,7 @@ options:					## every build knob, and what it defaults to
 	@echo ''
 	@printf '  %-20s %-8s %s\n'					\
 	    'WITH_DAEMONS'	 'yes'	'the three daemons'		\
+	    'WITH_MQTT'		 'yes'	'speak MQTT; no drops libmosquitto' \
 	    'WITH_DISPLAY'	 'no'	'moses_display, the LVGL front panel' \
 	    'WITH_DISPLAY_TESTS' 'no'	'the screenshot tests'		\
 	    'WITH_LOG'		 'no'	'log messages on stderr'	\
@@ -226,7 +230,7 @@ options:					## every build knob, and what it defaults to
 	    'MQTT_TOPIC_PREFIX'	 'water-breaker' 'compiled-in topic prefix'
 
 features:					## what this invocation selected, as shell variables
-	@echo '# WITH_LOG=$(WITH_LOG) WITH_LINEPROTOCOL=$(WITH_LINEPROTOCOL) WITH_TESTS=$(WITH_TESTS) WITH_DAEMONS=$(WITH_DAEMONS) WITH_DISPLAY=$(WITH_DISPLAY) DISPLAY_BACKEND=$(DISPLAY_BACKEND)'
+	@echo '# WITH_LOG=$(WITH_LOG) WITH_LINEPROTOCOL=$(WITH_LINEPROTOCOL) WITH_TESTS=$(WITH_TESTS) WITH_DAEMONS=$(WITH_DAEMONS) WITH_MQTT=$(WITH_MQTT) WITH_DISPLAY=$(WITH_DISPLAY) DISPLAY_BACKEND=$(DISPLAY_BACKEND)'
 	@echo "MOSES_CMAKE_FLAGS='$(CMAKEFLAGS)'"
 	@echo "MOSES_BUILD='$(BUILD)'"
 

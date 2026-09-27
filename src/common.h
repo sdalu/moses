@@ -1,10 +1,21 @@
 #ifndef __COMMON_H
 #define __COMMON_H
 
-#include <mosquitto.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <time.h>
+
+#ifdef WITH_MQTT
+#include <mosquitto.h>
+#else
+// Without the library there is still an API shaped around it, and these
+// are only ever pointed at -- struct mqtt keeps a `struct mosquitto *`
+// that is always NULL, and the message callback takes pointers it is
+// never called with. An incomplete type is enough for both.
+struct mosquitto;
+struct mosquitto_message;
+#endif
 
 struct gpio_v2_line_request;            // <linux/gpio.h>, only consumers need it
 
@@ -71,8 +82,15 @@ struct gpio_v2_line_request;            // <linux/gpio.h>, only consumers need i
 #endif
 
 #ifndef LOG_ERRMQTT
+#ifdef WITH_MQTT
 #define LOG_ERRMQTT(err, x, ...)					\
     LOG(x " (%s)", ##__VA_ARGS__, mosquitto_strerror(err))
+#else
+// mosquitto_strerror() is in the library that is not linked. Nothing
+// reaches this without MQTT, but the macro has to compile.
+#define LOG_ERRMQTT(err, x, ...)					\
+    LOG(x " (MQTT compiled out)", ##__VA_ARGS__)
+#endif
 #endif
 
 #ifndef LOG_ERRMQTT_PUBLISH
