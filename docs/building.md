@@ -140,7 +140,7 @@ removes it. With `WITH_DBUS` it also puts the bus policy in
 `$(DBUSDIR)` (`$(PREFIX)/dbus`). That is only a copy: `dbus-daemon`
 reads its policy from `/etc`, which is not `PREFIX`'s to write, so it
 still has to go there, or the daemons cannot own their names and
-`moses_display --source=auto` reads the broker instead:
+`moses_display --source=auto` falls back to the broker:
 
 ~~~sh
 make install FLAVOUR=sensors

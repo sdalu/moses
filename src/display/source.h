@@ -30,10 +30,10 @@
  *                retention and the liveness MQTT has, without the
  *                network; see source-dbus.c for what it will not claim.
  *
- * source-mqtt and source-dbus are not both read for the readings:
- * --source picks one, so a figure is never written by two sources
- * stamping time two different ways. The broker keeps nut-notify's UPS
- * events whichever it is, since nothing else carries them.
+ * source-mqtt and source-dbus are never both read: --source picks
+ * local, which is source-dbus and source-nut with no broker at all, or
+ * mqtt, which is source-mqtt and source-nut with --ups. So a figure is
+ * never written by two sources stamping time two different ways.
  *
  * All three write the model and nothing else, which is what lets them be
  * three files rather than three special cases inside main().
@@ -54,10 +54,6 @@ struct mqtt;				// common.h
  * broker carrying more than one installation tells them apart --
  * `water-breaker/moses`.
  *
- * `readings` says whether the daemons' own topics are subscribed to at
- * all. It is false when --source put them on the system bus, which
- * leaves the broker only nut-notify's UPS state to carry.
- *
  * `ups` names the UPS whose nut-notify events to watch, or is NULL to
  * watch every UPS on the broker. `ups_from_events` says whether those
  * events are the only thing that knows about the UPS -- true when
@@ -67,8 +63,8 @@ struct mqtt;				// common.h
  * Returns 0 once connected, or when MQTT is not configured at all --
  * the screen is then simply empty, which is worth seeing. < 0 on error.
  */
-int source_mqtt_start(struct mqtt *handler, bool readings,
-		      const char *ups, bool ups_from_events);
+int source_mqtt_start(struct mqtt *handler, const char *ups,
+		      bool ups_from_events);
 
 /**
  * Start polling upsd every `interval` seconds, on its own thread.

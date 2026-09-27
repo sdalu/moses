@@ -49,7 +49,8 @@ keepalive lapses. A name never seen marks nothing, though: a daemon
 built without the bus, or refused by the policy, is alive and merely
 silent there, and its readings grey out on staleness like any other.
 
-`moses_display` reads one of the two, never both (`--source`). Read
+`moses_display` reads one of the two, never both (`--source`): `local`
+is the bus and `upsd`, with no broker at all, and `mqtt` the broker. Read
 together, every figure had two writers that stamped time two ways --
 the line's own time against the moment a message arrived -- and the last
 to arrive won; and the broker, dialled first, could take the panel down
@@ -60,9 +61,10 @@ carries anything however long it is watched. The bus has no call that
 reports its policy, only ones that apply it, so the display owns a name
 of its own, `moses.display`, that only the policy grants -- the bus's
 own answer, where finding `moses.conf` on disk would be a guess about
-where `dbus-daemon` looks and whether it has read it. nut-notify's UPS
-events are on the broker alone, so it is kept for those either way, and
-an unreachable one then costs the UPS and nothing else.
+where `dbus-daemon` looks and whether it has read it. The UPS under
+`local` is `upsd`'s, on this machine too: nut-notify's events are on the
+broker alone, and keeping a broker for them would put the network back
+under a panel that exists to do without it.
 
 `moses_display` is a subscriber and nothing else, which is why
 `WITH_MQTT=OFF` refuses it outright rather than building something with

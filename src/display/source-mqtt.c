@@ -227,8 +227,8 @@ on_message(struct mosquitto *mosq, void *obj,
 //== Source ============================================================
 
 int
-source_mqtt_start(struct mqtt *handler, bool readings,
-		  const char *ups, bool ups_from_events)
+source_mqtt_start(struct mqtt *handler, const char *ups,
+		  bool ups_from_events)
 {
     const char *prefix = mqtt_topic_prefix();
 
@@ -238,7 +238,7 @@ source_mqtt_start(struct mqtt *handler, bool readings,
     struct mqtt_subscription sub[SUB_COUNT + 1];
     unsigned int             subcount = 0;
 
-    for (int i = 0 ; readings && (i < SUB_COUNT) ; i++) {
+    for (int i = 0 ; i < SUB_COUNT ; i++) {
 	if (asprintf(&sub_topic[i], "%s/%s", prefix, sub_suffix[i]) < 0)
 	    DIE(2, "failed to allocate MQTT topic string");
 	sub[subcount++] = (struct mqtt_subscription){

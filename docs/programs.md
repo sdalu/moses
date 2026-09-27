@@ -112,7 +112,7 @@ it. A flow of `+N` stays up for 30 seconds after a pulse report.
 | `-i`, `--interval=SEC` | Poll `upsd` every SEC (default 10s)                      |
 | `-s`, `--stale=SEC`    | Grey out a reading older than SEC (default 150s)         |
 | `-u`, `--ups[=NAME]`   | Poll `upsd` on this machine; without NAME, its first UPS |
-| `-S`, `--source=WHERE` | The daemons' readings: `mqtt`, `dbus`, `auto` (default)  |
+| `-S`, `--source=WHERE` | `mqtt`, `local`, or `auto` (default)                     |
 | `-c`, `--check`        | Bring the panel up, report, and exit                     |
 
 `--check` is for a new or rewired machine: it makes the same checks a
@@ -121,14 +121,14 @@ buffer against the largest transfer -- and exits 0 once the panel is up,
 without drawing. [`make check-spi`](hardware.md#lcd) asks the boot
 configuration the same questions without a built binary.
 
-**The readings** come from one source, never both:
+**The source** is one of two, never both:
 
-* *`mqtt`*, the broker: the way for a display on any other machine.
-* *`dbus`*, the system bus: the daemons on this machine, with no network
-  in between, so the panel keeps working while the broker is out of
-  reach. Needs `WITH_DBUS`. A broker that cannot be reached at start is
-  logged, and costs only the UPS events.
-* *`auto`* picks `dbus` when the display may own the bus name
+* *`local`*: nothing off this machine. The readings from the system bus,
+  the UPS from `upsd`, and no broker at all, so the panel keeps working
+  while the network is down. Needs `WITH_DBUS`.
+* *`mqtt`*: the broker, the way for a display on any other machine. The
+  UPS as the next section says.
+* *`auto`* picks `local` when the display may own the bus name
   `moses.display`, and `mqtt` otherwise -- or when there is no system bus
   at all. [`dbus/moses.conf`](interfaces.md#the-system-bus) lets root own
   it, and the bus has no call that reports its policy, so asking for the
@@ -136,17 +136,15 @@ configuration the same questions without a built binary.
   that rather than by whether a daemon is on the bus right now, because
   at boot the panel may well start before the daemons do.
 
-With `dbus` chosen by hand, a refused name is logged and the bus read
+With `local` chosen by hand, a refused name is logged and the bus read
 regardless. Another `moses_display` already owning the name stops this
 one, whichever source was asked for.
-
-Whichever it is, `nut-notify`'s UPS events still come from the broker:
-nothing else carries them.
 
 It never touches the relay, and has no `--reduced-latency`: on a
 single-core Pi that would compete with the program that shuts the water.
 
-**The UPS** comes one of two ways:
+**The UPS**, with `mqtt`, comes one of two ways; `local` is always the
+second:
 
 * *Without `--ups`*, from the events [`nut-notify`](system.md#nut)
   publishes on MQTT: on line or on battery, no charge and no time. It

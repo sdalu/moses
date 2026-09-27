@@ -26,11 +26,14 @@
  * All MQTT topics are relative to MQTT_TOPIC_PREFIX, except the UPS
  * notifications, which nut-notify publishes outside it.
  *
- * The UPS has two ways in and --ups picks between them. With it, upsd
- * on this machine is polled -- for the UPS named, or the first it lists
- * -- and the panel gets a charge and a remaining time. Without it, the
- * state comes from nut-notify's MQTT events alone, which is what a
- * display running anywhere else can have.
+ * --source picks where everything comes from: local is the system bus
+ * and upsd on this machine, with no broker at all; mqtt is the broker,
+ * which is what a display anywhere else has. See main().
+ *
+ * The UPS has two ways in. upsd on this machine is polled -- for the
+ * UPS named, or the first it lists -- under local or with --ups, and the
+ * panel gets a charge and a remaining time. Otherwise the state comes
+ * from nut-notify's MQTT events alone.
  */
 
 #include <getopt.h>
@@ -73,8 +76,8 @@
 /* Where the daemons' readings are read from. See main(). */
 enum source {
     SOURCE_AUTO = 0,
-    SOURCE_MQTT,
-    SOURCE_DBUS,
+    SOURCE_MQTT,			/**< the broker			*/
+    SOURCE_LOCAL,			/**< the bus and upsd, no broker */
 };
 
 
@@ -221,14 +224,14 @@ display_parse_config(int argc, char **argv, struct display *d)
 		d->source = SOURCE_AUTO;
 	    else if (strcmp(optarg, "mqtt") == 0)
 		d->source = SOURCE_MQTT;
-	    else if (strcmp(optarg, "dbus") == 0)
+	    else if (strcmp(optarg, "local") == 0)
 #ifdef WITH_DBUS
-		d->source = SOURCE_DBUS;
+		d->source = SOURCE_LOCAL;
 #else
-		USAGE_DIE("--source=dbus wants a build with WITH_DBUS");
+		USAGE_DIE("--source=local wants a build with WITH_DBUS");
 #endif
 	    else
-		USAGE_DIE("invalid source (auto, mqtt, dbus)");
+		USAGE_DIE("invalid source (auto, mqtt, local)");
 	    break;
 	case 'c':
 	    d->check_only = true;
@@ -242,8 +245,9 @@ display_parse_config(int argc, char **argv, struct display *d)
 	    printf("  -u, --ups[=NAME]          poll upsd here, for charge and remaining time;\n");
 	    printf("                            without NAME, the first UPS upsd lists\n");
 	    printf("                            (omit -u entirely: UPS state from MQTT events)\n");
-	    printf("  -S, --source=WHERE        the daemons' readings: mqtt, dbus, or auto\n");
-	    printf("                            (default: dbus if it may own moses.display)\n");
+	    printf("  -S, --source=WHERE        mqtt: the broker; local: the bus and upsd, no\n");
+	    printf("                            broker; auto (default): local if it may own\n");
+	    printf("                            moses.display, else mqtt\n");
 	    printf("  -c, --check               bring the panel up, report, and exit;\n");
 	    printf("                            the same checks a normal start makes\n");
 	    printf("\n");
@@ -293,41 +297,22 @@ main(int argc, char *argv[])
 		     device_name(mqtt_topic_prefix()));
 
     /*
-     * Where the UPS comes from is --ups, and nothing else.
+     * Where everything comes from, which --source picks.
      *
-     * Named: upsd on this machine is asked about it, which is the only
-     * way to get a charge and a remaining time. It is asked once here,
-     * before anything starts, so the panel has a figure on it
-     * immediately rather than one interval from now.
+     * local: nothing off this machine. The daemons' readings from the
+     * system bus, the UPS from upsd, and no broker at all -- so the
+     * panel keeps working with the network down, which is precisely the
+     * moment somebody walks up to it.
      *
-     * Not named: upsd is not touched at all, and the UPS is whatever
-     * the nut-notify events on the broker say it is -- a status, and no
-     * figures. That is the right way round for a display that is not on
-     * the machine the UPS is attached to, where localhost has no upsd
-     * to ask and polling it would only ever report that there is no UPS
-     * while the broker was carrying its events all along.
-     */
-    if (d->use_upsd) {
-	source_nut_probe(d->ups);
-	if (source_nut_start(d->ups, d->ups_interval) < 0)
-	    DIE(2, "failed to start polling upsd");
-    } else {
-	LOG("UPS                  : from MQTT events (no --ups given)");
-    }
-
-    /* The events are watched either way. With upsd in play they name
-     * the UPS it settled on -- given or discovered -- so a second UPS
-     * on the broker cannot write over it; without, they are wildcarded
-     * and are what the UPS state is made of. */
-    /*
-     * The daemons' readings come from one place, which --source picks.
+     * mqtt: the broker, which is what a display anywhere else has. The
+     * UPS from nut-notify's events on it, or from upsd here with --ups.
      *
-     * The bus is tried first unless the broker was asked for, and it
-     * settles auto by owning moses.display: the bus reports no policy,
-     * it only applies it, and dbus/moses.conf is what lets that name be
-     * owned. Not by whether a daemon is on the bus right now -- at boot
-     * this may well start before they do, and a bus without the policy
-     * never carries anything however long it is watched.
+     * auto settles between the two by owning moses.display: the bus
+     * reports no policy, it only applies it, and dbus/moses.conf is what
+     * lets that name be owned. Not by whether a daemon is on the bus
+     * right now -- at boot this may well start before they do, and a
+     * bus without the policy never carries anything however long it is
+     * watched.
      *
      * The bus, once chosen, is fatal to be without: a display that
      * looked like it was reading it and was not would be worse. Another
@@ -342,7 +327,7 @@ main(int argc, char *argv[])
 	enum source_dbus_name name;
 
 	if (source_dbus_start(&name) < 0) {
-	    if (source == SOURCE_DBUS)
+	    if (source == SOURCE_LOCAL)
 		DIE(2, "failed to reach the system bus");
 	    source = SOURCE_MQTT;
 	    why    = "no system bus";
@@ -351,7 +336,7 @@ main(int argc, char *argv[])
 	} else if (name == SOURCE_DBUS_NAME_OWNED) {
 	    if (source == SOURCE_AUTO)
 		why = "owns moses.display";
-	    source = SOURCE_DBUS;
+	    source = SOURCE_LOCAL;
 	} else if (source == SOURCE_AUTO) {
 	    source_dbus_stop();
 	    source = SOURCE_MQTT;
@@ -362,30 +347,40 @@ main(int argc, char *argv[])
     if (source == SOURCE_AUTO)		/* built without the bus */
 	source = SOURCE_MQTT;
     LOG("Source               : %s%s%s%s",
-	(source == SOURCE_DBUS) ? "dbus" : "mqtt",
+	(source == SOURCE_LOCAL) ? "local" : "mqtt",
 	why ? " (auto: " : "", why ? why : "", why ? ")" : "");
     (void)why;
 
-    /* The broker, for the readings when it is their source, and for
-     * nut-notify's UPS events either way -- they are only ever on the
-     * broker. With upsd in play they name the UPS it settled on --
-     * given or discovered -- so a second UPS on the broker cannot write
-     * over it; without, they are wildcarded and are what the UPS state
-     * is made of.
+    /*
+     * The UPS: upsd on this machine when local, or when --ups asks for
+     * it. That is the only way to a charge and a remaining time, and it
+     * is asked once here, before anything starts, so the panel has a
+     * figure on it at once rather than one interval from now.
      *
-     * Fatal only when the broker is where the readings come from. With
-     * the bus as their source, a broker that cannot be reached costs
-     * the UPS events and nothing else, and dying over it would take the
-     * panel down in the one situation the bus is there for: the network
-     * being down when this starts. */
-    if (source_mqtt_start(&d->mqtt, source == SOURCE_MQTT,
-			  d->use_upsd ? source_nut_name() : NULL,
-			  ! d->use_upsd) < 0) {
-	if (source == SOURCE_MQTT)
-	    DIE(2, "failed to subscribe to MQTT");
-	LOG("MQTT unreachable, carrying on without the UPS events");
+     * Otherwise upsd is not touched, and the UPS is whatever the
+     * nut-notify events on the broker say -- a status, and no figures.
+     * That is the right way round for a display that is not on the
+     * machine the UPS is attached to, where localhost has no upsd to
+     * ask while the broker was carrying its events all along.
+     */
+    bool use_upsd = d->use_upsd || (source == SOURCE_LOCAL);
+    if (use_upsd) {
+	source_nut_probe(d->ups);
+	if (source_nut_start(d->ups, d->ups_interval) < 0)
+	    DIE(2, "failed to start polling upsd");
+    } else {
+	LOG("UPS                  : from MQTT events (no --ups given)");
     }
 
+    /* The broker, when it is the source. Its UPS events are watched
+     * with upsd in play too: they name the UPS upsd settled on -- given
+     * or discovered -- so a second UPS on the broker cannot write over
+     * it, and they repaint at once on a change; without upsd they are
+     * wildcarded and are what the UPS state is made of. */
+    if ((source == SOURCE_MQTT) &&
+	(source_mqtt_start(&d->mqtt, use_upsd ? source_nut_name() : NULL,
+			   ! use_upsd) < 0))
+	DIE(2, "failed to subscribe to MQTT");
 
     /* Unlike the daemons this one does clean up: the backlight is a
      * lit panel left behind, not a valve, so there is something worth
