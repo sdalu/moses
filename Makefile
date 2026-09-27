@@ -437,7 +437,7 @@ clean:						## remove the build directory and bin/
 	rm -rf $(BUILD) bin
 
 distclean: clean				## clean, plus the other build directories
-	rm -rf build-analyze
+	rm -rf build-analyze build-nohw build-display
 
 
 #

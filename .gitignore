@@ -1,5 +1,7 @@
 /build/
 /build-analyze/
+/build-nohw/
+/build-display/
 /bin/
 /CLAUDE.local.md
 /.cache/
