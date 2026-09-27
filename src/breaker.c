@@ -219,7 +219,7 @@ breaker_mqtt_init(struct breaker_mqtt *mqtt)
 	    .qos   = 1,
 	}, mqtt->topic.avail, BREAKER_ON_MESSAGE);
     if (rc < 0) return -1;
-    if (rc > 0) LOG("MQTT connection established");
+    if (rc > 0) LOG("MQTT connection      : established");
 
     return 0;
 }
@@ -408,6 +408,8 @@ main(int argc, char **argv)
     if (other < 0)
 	DIE(2, "already running");
     
+    LOG_REDUCED_LATENCY(breaker.reduced_latency);
+
     // Initialization
     if (breaker_init(&breaker) < 0)
 	DIE(2, "failed to initialize");

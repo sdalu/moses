@@ -282,7 +282,7 @@ on_set_state(DBusConnection *c, DBusMessage *msg)
 	return DBUS_HANDLER_RESULT_HANDLED;
     }
 
-    LOG("D-Bus: SetState(\"%s\") from %s", state,
+    LOG("D-Bus                : SetState(\"%s\") from %s", state,
 	dbus_message_get_sender(msg) ? dbus_message_get_sender(msg) : "?");
 
     int rc = sink.set_state(state);
@@ -450,7 +450,7 @@ sink_connect(void)
     DBusConnection *c = dbus_bus_get_private(DBUS_BUS_SYSTEM, &err);
     if (c == NULL) {
 	if (! reported)
-	    LOG("D-Bus: cannot reach the system bus: %s", err.message);
+	    LOG("D-Bus                : cannot reach the system bus: %s", err.message);
 	reported = true;
 	dbus_error_free(&err);
 	return NULL;
@@ -470,9 +470,9 @@ sink_connect(void)
     if (rc != DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER) {
 	if (! reported) {
 	    if (dbus_error_is_set(&err))
-		LOG("D-Bus: cannot own %s: %s", sink.name, err.message);
+		LOG("D-Bus                : cannot own %s: %s", sink.name, err.message);
 	    else
-		LOG("D-Bus: cannot own %s: already owned", sink.name);
+		LOG("D-Bus                : cannot own %s: already owned", sink.name);
 	}
 	reported = true;
 	dbus_error_free(&err);
@@ -485,7 +485,7 @@ sink_connect(void)
     if (! dbus_connection_try_register_object_path(c, sink.path, &vt,
 						   NULL, &err)) {
 	if (! reported)
-	    LOG("D-Bus: cannot serve %s: %s", sink.path, err.message);
+	    LOG("D-Bus                : cannot serve %s: %s", sink.path, err.message);
 	reported = true;
 	dbus_error_free(&err);
 	dbus_connection_close(c);
@@ -494,7 +494,7 @@ sink_connect(void)
     }
 
     if (reported)
-	LOG("D-Bus: %s is on the system bus now", sink.name);
+	LOG("D-Bus                : %s is on the system bus now", sink.name);
     reported = false;
     return c;
 }
@@ -542,7 +542,7 @@ sink_thread(void *arg)
 	dbus_connection_unref(c);
 
 	if (! sink.stopping) {
-	    LOG("D-Bus: lost the system bus, retrying");
+	    LOG("D-Bus                : lost the system bus, retrying");
 	    sink_backoff();
 	}
     }
@@ -570,13 +570,13 @@ dbus_sink_start(const char *daemon)
      * life of the daemon, so it is refused here, once, instead. */
     for (const char *p = daemon ; *p != '\0' ; p++) {
 	if (! isalnum((unsigned char)*p) && (*p != '_') && (*p != '-')) {
-	    LOG("D-Bus: \"%s\" is not a bus name element; not started",
+	    LOG("D-Bus                : \"%s\" is not a bus name element; not started",
 		daemon);
 	    return;
 	}
     }
     if ((daemon[0] == '\0') || isdigit((unsigned char)daemon[0])) {
-	LOG("D-Bus: \"%s\" is not a bus name element; not started", daemon);
+	LOG("D-Bus                : \"%s\" is not a bus name element; not started", daemon);
 	return;
     }
 
@@ -586,14 +586,14 @@ dbus_sink_start(const char *daemon)
 		     daemon);
     if ((n < 0) || ((size_t)n >= sizeof(sink.name)) ||
 	(m < 0) || ((size_t)m >= sizeof(sink.path))) {
-	LOG("D-Bus: \"%s\" is too long for a bus name; not started", daemon);
+	LOG("D-Bus                : \"%s\" is too long for a bus name; not started", daemon);
 	return;
     }
 
     /* Before any other libdbus call in the process. Idempotent, and
      * moses_display's source calls it too. */
     if (! dbus_threads_init_default()) {
-	LOG("D-Bus: cannot initialise threading; not started");
+	LOG("D-Bus                : cannot initialise threading; not started");
 	return;
     }
 
@@ -603,7 +603,7 @@ dbus_sink_start(const char *daemon)
     int rc = pthread_create(&sink.thread, NULL, sink_thread, NULL);
     if (rc != 0) {
 	errno = rc;
-	LOG_ERRNO("D-Bus: cannot start the bus thread; not started");
+	LOG_ERRNO("D-Bus                : cannot start the bus thread; not started");
 	return;
     }
     sink.started = true;

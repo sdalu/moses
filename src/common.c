@@ -299,8 +299,7 @@ single_instance(const char *name)
 void
 reduced_latency(void)
 {
-    LOG("configuring for reduced latency");
-
+    // Announced by the caller, at the top of its settings (common.h).
     // Change scheduler priority to be more "real-time". Best-effort: this
     // needs CAP_SYS_NICE, so warn rather than abort when it is denied.
     struct sched_param sp = {
@@ -486,10 +485,10 @@ _mqtt_on_connect(struct mosquitto *mosq, void *obj, int reason_code)
 	if (mqtt->connection_retry != 0) {
 	    if (mqtt->connection_retry > 0)
 		mqtt->connection_retry--;
-	    LOG("connection failed [RETRYING] (%s)",
+	    LOG("MQTT connection      : failed, retrying (%s)",
 		mosquitto_connack_string(reason_code));
 	} else {
-	    LOG("connection failed [DISCONNECTING] (%s)",
+	    LOG("MQTT connection      : failed, disconnecting (%s)",
 		mosquitto_connack_string(reason_code));
 	    mosquitto_disconnect(mosq);
 	}
@@ -533,7 +532,7 @@ mqtt_init(struct mqtt *mqtt, unsigned int subcount,
 {
     // Sanity check
     if (mqtt->cfg.host == NULL) {
-	LOG("MQTT not enabled");
+	LOG("MQTT                 : not enabled");
 	return 0;
     }
 

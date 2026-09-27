@@ -242,7 +242,7 @@ fetch(DBusConnection *c, const struct daemon *d)
     if (reply == NULL) {
 	if (! dbus_error_has_name(&err, DBUS_ERROR_SERVICE_UNKNOWN) &&
 	    ! dbus_error_has_name(&err, DBUS_ERROR_NAME_HAS_NO_OWNER))
-	    LOG("D-Bus: %s would not say: %s", d->name, err.message);
+	    LOG("D-Bus                : %s would not say: %s", d->name, err.message);
 	dbus_error_free(&err);
 	return;
     }
@@ -274,7 +274,7 @@ fetch(DBusConnection *c, const struct daemon *d)
 
     /* It answered, so it is there. */
     model_set_avail(d->who, true);
-    LOG("D-Bus: %s answered with %zu line(s)", d->name, applied);
+    LOG("D-Bus                : %s answered with %zu line(s)", d->name, applied);
     (void)applied;			/* only logged, and LOG may be nothing */
 }
 
@@ -320,11 +320,11 @@ on_signal(DBusConnection *c, DBusMessage *msg, void *data)
 	    const struct daemon *d = daemon_by_name(name);
 	    if (d != NULL) {
 		if (new[0] != '\0') {
-		    LOG("D-Bus: %s is on the bus", d->name);
+		    LOG("D-Bus                : %s is on the bus", d->name);
 		    model_set_avail(d->who, true);
 		    src.fetch[d - daemons] = true;
 		} else if (old[0] != '\0') {
-		    LOG("D-Bus: %s has left the bus", d->name);
+		    LOG("D-Bus                : %s has left the bus", d->name);
 		    model_set_avail(d->who, false);
 		}
 	    }
@@ -352,7 +352,7 @@ src_connect(void)
 
     DBusConnection *c = dbus_bus_get_private(DBUS_BUS_SYSTEM, &err);
     if (c == NULL) {
-	LOG("D-Bus: cannot reach the system bus: %s", err.message);
+	LOG("D-Bus                : cannot reach the system bus: %s", err.message);
 	dbus_error_free(&err);
 	return NULL;
     }
@@ -370,7 +370,7 @@ src_connect(void)
     for (size_t i = 0 ; i < sizeof(rules) / sizeof(rules[0]) ; i++) {
 	dbus_bus_add_match(c, rules[i], &err);
 	if (dbus_error_is_set(&err)) {
-	    LOG("D-Bus: cannot match %s: %s", rules[i], err.message);
+	    LOG("D-Bus                : cannot match %s: %s", rules[i], err.message);
 	    dbus_error_free(&err);
 	    dbus_connection_close(c);
 	    dbus_connection_unref(c);
@@ -379,7 +379,7 @@ src_connect(void)
     }
 
     if (! dbus_connection_add_filter(c, on_signal, NULL, NULL)) {
-	LOG("D-Bus: cannot add the filter");
+	LOG("D-Bus                : cannot add the filter");
 	dbus_connection_close(c);
 	dbus_connection_unref(c);
 	return NULL;
@@ -404,7 +404,7 @@ src_own(DBusConnection *c)
     int rc = dbus_bus_request_name(c, SRC_OWN_NAME,
 				   DBUS_NAME_FLAG_DO_NOT_QUEUE, &err);
     if (dbus_error_is_set(&err)) {
-	LOG("D-Bus: cannot own " SRC_OWN_NAME ": %s", err.message);
+	LOG("D-Bus                : cannot own " SRC_OWN_NAME ": %s", err.message);
 	dbus_error_free(&err);
 	return SOURCE_DBUS_NAME_REFUSED;
     }
@@ -413,7 +413,7 @@ src_own(DBusConnection *c)
     case DBUS_REQUEST_NAME_REPLY_ALREADY_OWNER:
 	return SOURCE_DBUS_NAME_OWNED;
     default:
-	LOG("D-Bus: " SRC_OWN_NAME " is owned by another process");
+	LOG("D-Bus                : " SRC_OWN_NAME " is owned by another process");
 	return SOURCE_DBUS_NAME_TAKEN;
     }
 }
@@ -439,7 +439,7 @@ src_thread(void *arg)
 		src_backoff();
 		continue;
 	    }
-	    LOG("D-Bus: back on the system bus");
+	    LOG("D-Bus                : back on the system bus");
 	    (void)src_own(c);		/* logged when it is not had */
 	}
 
@@ -467,7 +467,7 @@ src_thread(void *arg)
 	    /* The bus itself went, and with it every name on it. The
 	     * marks are left as they were: the daemons did not die, the
 	     * thing that would have told us did. */
-	    LOG("D-Bus: lost the system bus, retrying");
+	    LOG("D-Bus                : lost the system bus, retrying");
 	    src_backoff();
 	}
     }
@@ -486,7 +486,7 @@ source_dbus_start(enum source_dbus_name *name)
     }
 
     if (! dbus_threads_init_default()) {
-	LOG("D-Bus: cannot initialise threading");
+	LOG("D-Bus                : cannot initialise threading");
 	errno = ENOMEM;
 	return -1;
     }

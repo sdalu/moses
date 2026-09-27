@@ -279,7 +279,7 @@ watermeter_mqtt_init(struct watermeter_mqtt *mqtt)
 
     int rc = mqtt_connect(&mqtt->handler, 0, NULL, mqtt->topic.avail, NULL);
     if (rc < 0) return -1;
-    if (rc > 0) LOG("MQTT connection established");
+    if (rc > 0) LOG("MQTT connection      : established");
 
     return 0;
 }
@@ -310,9 +310,9 @@ watermeter_init(struct watermeter *w)
 	    goto failed_mbus;
 	}
 	mbus_softreset(ir->mbus);
-	LOG("m-bus device %s opened at %ld bauds", ir->device, ir->baudrate);
+	LOG("M-Bus device         : %s at %ld bauds", ir->device, ir->baudrate);
     } else {
-	LOG("No m-bus device specified (skipping)");
+	LOG("M-Bus device         : none (skipping)");
     }
     
     
@@ -341,7 +341,7 @@ watermeter_init(struct watermeter *w)
 	pc->ctrl.fd = ctrl_fd;
 	pc->pin.fd  = req.fd;
     } else {
-	LOG("GPIO line not defined (skipping)");
+	LOG("GPIO line            : none (skipping)");
     }
 
     return 0;
@@ -582,6 +582,8 @@ main(int argc, char **argv)
 	DIE(2, "already running as pid %d", (int)other);
     if (other < 0)
 	DIE(2, "already running");
+
+    LOG_REDUCED_LATENCY(watermeter.reduced_latency);
 
     // Initialization
     if (watermeter_init(&watermeter) < 0)

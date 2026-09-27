@@ -107,7 +107,7 @@ gpio_open_line(const char *chip, uint32_t pin, const char *label,
 	free(devpath);
 	return -1;
     }
-    LOG("controller device %s opened (fd=%d)", devpath, fd);
+    LOG("GPIO controller      : %s (fd=%d)", devpath, fd);
     free(devpath);
 
     // The caller has filled req->config (flags/attrs); we own the
@@ -121,7 +121,7 @@ gpio_open_line(const char *chip, uint32_t pin, const char *label,
 	close(fd);
 	return -1;
     }
-    LOG("GPIO line configured as single pin %u (fd=%d)", pin, req->fd);
+    LOG("GPIO line            : pin %u (fd=%d)", pin, req->fd);
 
     return fd;
 }

@@ -277,7 +277,7 @@ source_mqtt_start(struct mqtt *handler, const char *ups,
     if (rc < 0)
 	return -1;
     if (rc > 0)
-	LOG("MQTT connection established");
+	LOG("MQTT connection      : established");
 
     return 0;
 }

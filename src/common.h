@@ -317,6 +317,13 @@ int gpio_open_line(const char *chip, uint32_t pin, const char *label,
 // interrupts the wait.
 void sleep_until(clockid_t clock, const struct timespec *deadline);
 
+// Log whether reduced latency was asked for, first among the settings a
+// daemon logs at start. Only the line: reduced_latency() itself comes
+// after the MQTT and bus threads are started, so that they stay ordinary
+// threads rather than inheriting SCHED_FIFO.
+#define LOG_REDUCED_LATENCY(on)						\
+	LOG("Reduced latency      : %s", (on) ? "enabled" : "disabled")
+
 void reduced_latency(void);
 
 // Take the lock that makes this the one `name` running on this machine

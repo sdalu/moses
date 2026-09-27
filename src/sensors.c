@@ -175,7 +175,7 @@ sensors_mqtt_init(struct sensors_mqtt *mqtt)
 
     int rc = mqtt_connect(&mqtt->handler, 0, NULL, mqtt->topic.avail, NULL);
     if (rc < 0) return -1;
-    if (rc > 0) LOG("MQTT connection established");
+    if (rc > 0) LOG("MQTT connection      : established");
 
     return 0;
 }
@@ -357,6 +357,8 @@ int main(int argc, char *argv[]) {
     if (other < 0)
 	DIE(2, "already running");
     
+    LOG_REDUCED_LATENCY(sensors.reduced_latency);
+
     // Initialization
     if (sensors_init() < 0)
 	DIE(2, "Failed to initialized");
