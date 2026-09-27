@@ -12,9 +12,13 @@
   `moses_watermeter`. The M-Bus and mosquitto lookups used to be
   `REQUIRED` and unconditional, so configure aborted before any target
   was built — including tests that never touch either. They are now
-  conditional: `-DWITH_DAEMONS=OFF` skips the daemons and does not look
-  for the libraries at all, which is how the hardware-free tests
-  configure on a machine that has neither. For the daemons themselves,
+  conditional: turning the daemons off is what stops the lookups from
+  happening at all, which is how the hardware-free tests configure on a
+  machine that has neither. There is no longer one flag for all three --
+  it is `-DWITH_WATERMETER=OFF -DWITH_BREAKER=OFF -DWITH_TEMPERATURE=OFF`,
+  or just `make tests-nohw`, which passes them for you.
+
+  For the daemons themselves,
   build libmbus first (README, *libmbus*; `CMakeLists.txt` hints at
   `/opt/libmbus`), or point `MBUS_INCLUDE_DIR` and `MBUS_LIBRARY` at
   wherever it landed.
@@ -40,9 +44,14 @@
   compares it against `test/ref-imgs/`. All three build off Linux:
 
       cmake -B build-nohw -DWITH_TESTS=ON -DWITH_DISPLAY_TESTS=ON \
-                          -DWITH_DAEMONS=OFF
+                          -DWITH_WATERMETER=OFF -DWITH_BREAKER=OFF \
+                          -DWITH_TEMPERATURE=OFF
       make  -C build-nohw
       ctest --test-dir build-nohw --output-on-failure
+
+  or, the same thing without remembering any of it:
+
+      make tests-nohw
 
   That is 4 of the 5 tests, and `dashboard` is the only way to see what
   the screen looks like without standing in front of the machine -- it
