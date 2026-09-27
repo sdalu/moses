@@ -42,11 +42,12 @@ including when the display owes a build of its own.
   `moses_gpio` and those parsers speak in GPIO line flags. Everything
   else builds anywhere, so off Linux run the six, call the daemons
   unverified, and say so.
-- **libmbus and Linux are independent preconditions.** Satisfying
-  libmbus gets a successful `cmake` and not a successful `make`. For the
-  daemons, build libmbus first (`docs/building.md`, *libmbus*;
-  `CMakeLists.txt` hints at `/opt/libmbus`) or point `MBUS_INCLUDE_DIR`
-  and `MBUS_LIBRARY` at wherever it landed.
+- **libmbus is built from `3rd/libmbus`, not installed.** Linux is the
+  only precondition for the daemons now. `MBUS_LIBRARY` and
+  `MBUS_INCLUDE_DIR` still select an installed copy. Do not run its
+  autotools inside the submodule: that leaves a stale `config.h` (it
+  said 0.9.0 against a 0.10.3 tree), which the build deliberately
+  ignores, and 66 untracked files in the tree.
 - **`WITH_DISPLAY` compiles the whole of `3rd/lvgl`** — some seven hours
   on a Pi Zero, and it needs a C++ compiler (LVGL's build enables the
   language although nothing here uses it). It is off by default and

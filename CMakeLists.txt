@@ -241,11 +241,11 @@ if (NEED_MOSQUITTO)
     find_library(MOSQUITTO_LIBRARY     NAMES mosquitto   REQUIRED)
 endif()
 
-# M-Bus -- used by moses_watermeter only (usually not packaged, see
-# docs/building.md, *libmbus*)
-if (NEED_MBUS)
-    find_path(   MBUS_INCLUDE_DIR NAMES mbus/mbus.h REQUIRED HINTS /opt/libmbus/include)
-    find_library(MBUS_LIBRARY     NAMES mbus        REQUIRED HINTS /opt/libmbus/lib)
+# M-Bus -- used by moses_watermeter only. Built from the 3rd/libmbus
+# submodule (see the bundled dependencies below), unless MBUS_LIBRARY
+# and MBUS_INCLUDE_DIR name an installed copy instead.
+if (NEED_MBUS AND MBUS_LIBRARY)
+    find_path(MBUS_INCLUDE_DIR NAMES mbus/mbus.h REQUIRED)
 endif()
 
 # libdbus -- the system bus sink in the daemons, the source in
@@ -273,6 +273,35 @@ target_compile_definitions(bme280 PUBLIC
     BME280_DOUBLE_ENABLE
     BME280_INTF_RET_TYPE=int
     BME280_INTF_RET_SUCCESS=0)
+
+# libmbus, unless an installed copy was named: its five sources, built
+# the way BME280 is rather than through its autotools. One wrinkle: mbus.c
+# includes "../config.h", which only configure writes -- and a stale one
+# left in the submodule by an in-tree build would win, being next to the
+# source. So mbus.c is compiled from a copy in the build tree, beside a
+# config.h carrying the one thing it reads, VERSION, from configure.ac.
+# Third-party code, so none of our warnings.
+if (NEED_MBUS AND NOT MBUS_LIBRARY)
+    set(_mbus ${3RD}/libmbus)
+    file(STRINGS ${_mbus}/configure.ac _mbus_init REGEX "^AC_INIT")
+    string(REGEX REPLACE "^AC_INIT\\(\\[libmbus\\], \\[([^]]*)\\].*" "\\1"
+           MBUS_VERSION "${_mbus_init}")
+    file(WRITE ${CMAKE_BINARY_DIR}/libmbus/config.h
+         "#define VERSION \"${MBUS_VERSION}\"\n")
+    configure_file(${_mbus}/mbus/mbus.c
+                   ${CMAKE_BINARY_DIR}/libmbus/mbus/mbus.c COPYONLY)
+    add_library(mbus STATIC
+        ${CMAKE_BINARY_DIR}/libmbus/mbus/mbus.c
+        ${_mbus}/mbus/mbus-protocol.c
+        ${_mbus}/mbus/mbus-protocol-aux.c
+        ${_mbus}/mbus/mbus-serial.c
+        ${_mbus}/mbus/mbus-tcp.c)
+    target_include_directories(mbus PRIVATE ${_mbus}/mbus PUBLIC ${_mbus})
+    target_compile_options(mbus PRIVATE -w)
+    target_link_libraries(mbus PUBLIC m)
+    set(MBUS_LIBRARY mbus)
+    message(STATUS "libmbus ${MBUS_VERSION}, built from 3rd/libmbus")
+endif()
 
 # bitters (low-level gpio/spi/i2c). Exposed as an INTERFACE library so its
 # sources are compiled with each consumer's own flags -- in particular only
@@ -360,7 +389,9 @@ endif()
 #
 if (WITH_WATERMETER)
     add_executable(moses_watermeter src/watermeter.c)
-    target_include_directories(moses_watermeter PRIVATE ${MBUS_INCLUDE_DIR})
+    if (MBUS_INCLUDE_DIR)
+        target_include_directories(moses_watermeter PRIVATE ${MBUS_INCLUDE_DIR})
+    endif()
     target_link_libraries(moses_watermeter PRIVATE moses_gpio ${MBUS_LIBRARY})
 endif()
 

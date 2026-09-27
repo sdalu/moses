@@ -85,7 +85,7 @@ ctest --test-dir build --output-on-failure -R dashboard
 It needs LVGL but no panel, no GPIO, no SPI and no broker — nothing
 Linux-only — so it runs on a development machine as well as on the Pi,
 which the rest of `moses_display` does not. Turning the three programs off
-is what lets it configure where mosquitto and libmbus are not installed.
+is what lets it configure where mosquitto is not installed.
 
 A reference image that does not exist **fails** the test, rather than
 being created from whatever was just rendered. LVGL will do the latter,

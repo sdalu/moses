@@ -148,6 +148,24 @@ were unconditional, a tree without libmbus could not be configured even
 to build a test that never goes near M-Bus.
 
 
+libmbus is built, not installed
+-------------------------------
+
+libmbus was a submodule long before the build used it: CMake looked for
+an installed copy under `/opt/libmbus`, so every Pi and every CI run
+built libmbus with autotools and installed it first -- the one
+dependency that took a manual step. It is five C files. They are now
+compiled like the BME280 API, from the pinned commit, and the version
+the daemon reports is the one the tree tracks. `MBUS_LIBRARY` still
+selects an installed copy for whoever wants one.
+
+`mbus.c` includes `"../config.h"`, which only `configure` writes, and a
+quoted include is looked for beside the source first. A `config.h` left
+in the submodule by an in-tree autotools run would therefore win over
+anything the build supplies -- the one found here said 0.9.0 in a 0.10.3
+tree. So `mbus.c` is compiled from a copy in the build directory, next
+to a `config.h` holding `VERSION` read from `configure.ac`.
+
 The knobs are an interface library, and LVGL is outside it
 ---------------------------------------------------------
 

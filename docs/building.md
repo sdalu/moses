@@ -13,35 +13,27 @@ A C23 compiler, [CMake](https://cmake.org/) ≥ 3.13, and:
 | Needed for                        | Debian package / source                    |
 | --------------------------------- | ------------------------------------------ |
 | MQTT (`WITH_MQTT`, on by default) | `libmosquitto-dev`                         |
-| `moses_watermeter`                | libmbus, usually not packaged: see below   |
 | `WITH_DBUS`                       | `libdbus-1-dev`                            |
 | `moses_display` (`WITH_DISPLAY`)  | a C++ compiler; SDL2 for the `sdl` backend |
 
-LVGL, the BME280 sensor API and `bitters` are git submodules under
-`3rd/`: clone with `--recursive`, or run
+libmbus, LVGL, the BME280 sensor API and `bitters` are git submodules
+under `3rd/`, built with the rest: clone with `--recursive`, or run
 `git submodule update --init --recursive` afterwards. A Pi Zero that
 runs out of memory building LVGL wants some [swap](system.md#swap).
 
 ### libmbus
 
 `moses_watermeter` links [libmbus](https://github.com/rscada/libmbus),
-which the build looks for under `/opt/libmbus`:
+compiled from `3rd/libmbus` with no install step. To link an installed
+copy instead, name it: `cmake -DMBUS_LIBRARY=… -DMBUS_INCLUDE_DIR=…`.
+
+libmbus's command-line tools are the quickest check that the meter
+answers before any daemon is involved. The build does not make them;
+they come with a full install of libmbus, done outside this tree:
 
 ~~~sh
-git clone https://github.com/rscada/libmbus
-cd libmbus
-./build.sh
-./configure --prefix=/opt/libmbus
-make
-make install
-~~~
-
-Its command-line tools are the quickest check that the meter answers,
-before any daemon is involved:
-
-~~~sh
-/opt/libmbus/bin/mbus-serial-scan -b 2400 /dev/ttyAMA0            # find its address
-/opt/libmbus/bin/mbus-serial-request-data -b 2400 /dev/ttyAMA0 1  # read it
+mbus-serial-scan -b 2400 /dev/ttyAMA0            # find its address
+mbus-serial-request-data -b 2400 /dev/ttyAMA0 1  # read it
 ~~~
 
 

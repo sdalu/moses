@@ -71,8 +71,7 @@ readings can also go to stdout and to the system D-Bus; see
 Quick start
 -----------
 
-On the Pi, once the hats are set up ([docs/hardware.md](docs/hardware.md))
-and [libmbus](docs/building.md#libmbus) is installed:
+On the Pi, once the hats are set up ([docs/hardware.md](docs/hardware.md)):
 
 ~~~sh
 apt install build-essential cmake libmosquitto-dev libdbus-1-dev

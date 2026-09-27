@@ -28,32 +28,7 @@ jobs:
     - name: Install packaged dependencies
       run: |
         sudo apt-get update
-        sudo apt-get -y install libmosquitto-dev libdbus-1-dev dbus libtool libtool-bin libltdl-dev m4
-
-    # Pinned commit recorded in the superproject, used as the cache key.
-    - name: Resolve libmbus revision
-      id: libmbus
-      run: echo "rev=$(git rev-parse HEAD:3rd/libmbus)" >> "$GITHUB_OUTPUT"
-
-    # Cache the libmbus install keyed on the pinned submodule commit, so
-    # it is only rebuilt when the submodule is bumped.
-    - name: Cache libmbus
-      id: cache-libmbus
-      uses: actions/cache@v4
-      with:
-        path: /opt/libmbus
-        key: libmbus-${{ runner.os }}-${{ steps.libmbus.outputs.rev }}
-
-    # Build the pinned submodule rather than re-cloning, so CI links the
-    # exact libmbus version the repository tracks.
-    - name: Build libmbus from submodule
-      if: steps.cache-libmbus.outputs.cache-hit != 'true'
-      working-directory: 3rd/libmbus
-      run: |
-        ./build.sh
-        ./configure --prefix=/opt/libmbus
-        make -j"$(nproc)"
-        sudo make install
+        sudo apt-get -y install libmosquitto-dev libdbus-1-dev dbus
 
     - name: Configure
       run: cmake -B build -DWITH_LOG=1 -DWITH_LINEPROTOCOL=1 -DWITH_WERROR=1 -DWITH_TESTS=ON -DWITH_DBUS=ON
