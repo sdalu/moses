@@ -34,9 +34,20 @@ The broker is not on this machine, so a panel ten centimetres from the
 meter would otherwise read it over the network twice, and go blank while
 every daemon behind it was working. The bus is the local path for local
 consumers; MQTT remains the path for everything off the box.
-[docs/interfaces.md](docs/interfaces.md), *The system bus, beside
-MQTT*, has what each daemon puts there and why
-retention and the last will are what the replaced socket could not carry.
+[docs/interfaces.md](docs/interfaces.md), *The system bus*, has what
+each daemon puts there.
+
+It replaced a datagram socket that could carry neither of the two things
+that matter here. *Retention*: each daemon keeps the last line of each
+kind as a property, so a display started between reports is full within
+a round trip instead of showing dashes for a minute; the line's own
+timestamp is kept when it is plausible -- not in the future, not older
+than a day -- so a Pi that has not yet set its clock is stamped on
+arrival instead. *The last will*: owning a name is being alive, and
+`NameOwnerChanged` says so in milliseconds rather than after a
+keepalive lapses. A name never seen marks nothing, though: a daemon
+built without the bus, or refused by the policy, is alive and merely
+silent there, and MQTT's availability keeps that say.
 
 `moses_display` is a subscriber and nothing else, which is why
 `WITH_MQTT=OFF` refuses it outright rather than building something with

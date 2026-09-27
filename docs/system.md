@@ -1,10 +1,8 @@
 System configuration
 ====================
 
-What the Raspberry Pi needs besides the hats: a watchdog, a WiFi link
-that does not doze, and NUT to report the battery. The `/boot` settings
-each hat wants are in [hardware.md](hardware.md); the libraries the
-build wants are in [building.md](building.md).
+What the Raspberry Pi needs besides the hats.
+
 
 Watchdog
 --------
@@ -17,12 +15,9 @@ apt install watchdog
 WiFi
 ----
 
-For stable low-latency WiFi power management must be disabled
-~~~sh
-iwconfig wlan0 power off
-~~~
+For stable, low-latency WiFi, turn power management off:
+`iwconfig wlan0 power off`. With `/etc/network/interfaces`:
 
-If using `/etc/network/interfaces` for the configuration:
 ~~~text
 auto wlan0
 iface wlan0 inet dhcp
@@ -31,112 +26,85 @@ iface wlan0 inet dhcp
     wpa-conf /etc/wpa_supplicant/wpa_supplicant.conf
 ~~~
 
+
 Nut
 ---
 
-PiJuice is supported by the [NUT (Network UPS
-Tools)](https://networkupstools.org/), we will configure it to send
-notifications using MQTT.
-
-In the following configuration fragments, `__ups_name__` and
-`__password__` need to be replaced with appropriate values.
+[NUT](https://networkupstools.org/) supports the PiJuice, and its
+`upsmon` runs [`scripts/nut-notify`](../scripts/nut-notify) on each
+event. That publishes the event on `ups/<ups>/notify/<type>` and the
+current state, retained, on `ups/<ups>/state`, which is what
+`moses_display` reads without `--ups`. Replace `pijuice` and `secret`
+below with your own UPS name and password.
 
 ~~~sh
 apt install nut
 ~~~
 
-
-### nut
-
-Configure to run in `standalone` mode be editing the `nut.conf` file:
+`nut.conf`:
 
 ~~~conf
 MODE=standalone
 ~~~
 
-
-### ups
-
-The `ups.conf` contains the list of available UPS devices, here we
-only have the PiJuice:
+`ups.conf`:
 
 ~~~conf
-[__ups_name__]
+[pijuice]
 driver = pijuice
 port   = /dev/i2c-1
 desc   = "PiJuice"
 ~~~
 
+`upsd.conf`, loopback only, and `upsd.users`:
 
-### upsd
-
-UPS daemon listening for requests
-* user and autorisations are configured in `upsd.users`
 ~~~conf
-[upsmon]
-        password = __password__
-        upsmon primary
-~~~
-
-* will only listen on the loopback interface
-`upsd.conf`
-~~~text
 LISTEN 127.0.0.1 3493
 ~~~
 
+~~~conf
+[upsmon]
+        password = secret
+        upsmon primary
+~~~
 
-### upsmon
-
-Monitoring is defined in `upsmon.conf`, a custom notification hook is
-declared using `NOTIFYCMD` so UPS state is send using MQTT.
+`upsmon.conf`: `upsmon` runs `NOTIFYCMD` only for events flagged
+`EXEC`, and these are the ones `moses_display` understands:
 
 ~~~conf
-MONITOR __ups_name__ 1 upsmon __password__ primary
-NOTIFYCMD nut-notify
+MONITOR pijuice 1 upsmon secret primary
+NOTIFYCMD /path/to/moses/scripts/nut-notify
+NOTIFYFLAG ONLINE   SYSLOG+WALL+EXEC
+NOTIFYFLAG ONBATT   SYSLOG+WALL+EXEC
+NOTIFYFLAG LOWBATT  SYSLOG+WALL+EXEC
+NOTIFYFLAG SHUTDOWN SYSLOG+WALL+EXEC
+NOTIFYFLAG COMMBAD  SYSLOG+WALL+EXEC
+NOTIFYFLAG NOCOMM   SYSLOG+WALL+EXEC
 ~~~
 
-A simple `nut-notify` script can be defined as follow:
+`nut-notify` takes the MQTT settings from the environment, as the
+daemons do ([Environment](programs.md#environment)). `upsmon` usually
+passes none, so it falls back to `$MOSES_CONFIG`, else
+`$HOME/.config/moses.yaml` (`/root/.config/moses.yaml` without a
+`HOME`), read with `yq`:
 
-~~~sh
-#!/bin/sh
-
-# -- Config ------------------------------------------------------------
-
-MQTT_HOST="mqtt-host"
-MQTT_USER="mqtt-user"
-MQTT_PASSWD="mqtt-pasword"
-
-# ---------------------------------------------------------------------- 
-# $NOTIFYTYPE / $UPSNAME / $HOSTNAME
-
-# Path to commands
-MOSQUITTO_PUB=/usr/bin/mosquitto_pub
-
-# Notify (credential flags are only passed when set)
-${MOSQUITTO_PUB}                                \
-    -h "${MQTT_HOST}"                           \
-    ${MQTT_PORT:+-p "${MQTT_PORT}"}             \
-    ${MQTT_USER:+-u "${MQTT_USER}"}             \
-    ${MQTT_PASSWD:+-P "${MQTT_PASSWD}"}         \
-    -t "ups/${UPSNAME}/notify/${NOTIFYTYPE}"    \
-    -m "$1"
+~~~yaml
+:mqtt:
+  :host: broker.example
+  :port: 1883
+  :username: moses
+  :password: secret
 ~~~
-
-The repository ships a fuller [`scripts/nut-notify`](../scripts/nut-notify),
-which reads the MQTT settings the way the daemons do (see
-[Environment](programs.md#environment)) and also publishes the retained
-`ups/<ups>/state` that `moses_display` reads.
 
 
 Swap
 ----
 
-A build that runs out of memory on a Pi Zero (512 MB) wants some
-swap:
+A build that runs out of memory on a Pi Zero (512 MB) wants some swap:
 
 ~~~sh
-swapfile=swapfile
-fallocate -l 1G $swapfile
-mkswap $swapfile
-swapon $swapfile
+fallocate -l 1G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
 ~~~
