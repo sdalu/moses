@@ -154,7 +154,7 @@ help:						## show this help (the default)
 	}' Makefile
 	@echo ''
 	@echo 'Variables (current value):'
-	@printf '  %-16s %s\n'						      \
+	@printf '  %-20s %s\n'						      \
 	    FLAVOUR		'$(FLAVOUR)  (one of: $(FLAVOURS); see `make flavours`)' \
 	    BUILD		'$(BUILD)  (build directory)'		      \
 	    CMAKE		'$(CMAKE)'				      \
@@ -165,25 +165,34 @@ help:						## show this help (the default)
 	    MQTT_TOPIC_PREFIX	'$(MQTT_TOPIC_PREFIX)  (compiled-in default topic prefix)'
 	@echo ''
 	@echo 'Where a reading goes (yes/no, and none of them exclusive):'
-	@printf '  %-18s %s\n'						      \
-	    WITH_MQTT		'$(WITH_MQTT)  (the broker; no also drops moses_breaker)' \
-	    WITH_LINEPROTOCOL	'$(WITH_LINEPROTOCOL)  (stdout, as InfluxDB line protocol)' \
-	    WITH_DGRAM		'$(WITH_DGRAM)  (the same line to $(MOSES_DGRAM_PATH))'
+	@printf '  %-20s %-4s %s\n'					      \
+	    WITH_MQTT		'$(WITH_MQTT)'				      \
+		'(the broker, and the only way moses_breaker is commanded)'   \
+	    WITH_LINEPROTOCOL	'$(WITH_LINEPROTOCOL)'			      \
+		'(stdout, as InfluxDB line protocol)'			      \
+	    WITH_DGRAM		'$(WITH_DGRAM)'				      \
+		'(the same line to $(MOSES_DGRAM_PATH))'
 	@echo ''
 	@echo 'What gets built (yes/no; see `make options`):'
-	@printf '  %-18s %s\n'						      \
-	    WITH_WATERMETER	'$(WITH_WATERMETER)  (moses_watermeter; needs M-Bus)' \
-	    WITH_BREAKER	'$(WITH_BREAKER)  (moses_breaker; needs WITH_MQTT)' \
-	    WITH_TEMPERATURE	'$(WITH_TEMPERATURE)  (moses_sensors, the BME280)' \
-	    WITH_DISPLAY	'$(WITH_DISPLAY)  (moses_display; pulls in LVGL, a long compile)' \
-	    WITH_DISPLAY_TESTS	'$(WITH_DISPLAY_TESTS)  (the screenshot tests; needs LVGL, not a panel)' \
-	    WITH_TESTS		'$(WITH_TESTS)  (build the unit tests; `make tests` sets it)'
+	@printf '  %-20s %-4s %s\n'					      \
+	    WITH_WATERMETER	'$(WITH_WATERMETER)'			      \
+		'(moses_watermeter; needs M-Bus)'			      \
+	    WITH_BREAKER	'$(WITH_BREAKER)'			      \
+		'(moses_breaker; uncommandable without WITH_MQTT)'	      \
+	    WITH_TEMPERATURE	'$(WITH_TEMPERATURE)'			      \
+		'(moses_sensors, the BME280)'				      \
+	    WITH_DISPLAY	'$(WITH_DISPLAY)'			      \
+		'(moses_display; pulls in LVGL, a long compile)'	      \
+	    WITH_DISPLAY_TESTS	'$(WITH_DISPLAY_TESTS)'			      \
+		'(the screenshot tests; needs LVGL, not a panel)'	      \
+	    WITH_TESTS		'$(WITH_TESTS)'				      \
+		'(build the unit tests; `make tests` sets it)'
 	@echo ''
 	@echo 'Diagnostics:'
-	@printf '  %-18s %s\n'						      \
-	    WITH_LOG		'$(WITH_LOG)  (log messages on stderr)'	      \
-	    WITH_WERROR		'$(WITH_WERROR)  (warnings are errors, for CI)' \
-	    WITH_ANALYZER	'$(WITH_ANALYZER)  (run the GCC static analyzer)'
+	@printf '  %-20s %-4s %s\n'					      \
+	    WITH_LOG		'$(WITH_LOG)'	 '(log messages on stderr)'   \
+	    WITH_WERROR		'$(WITH_WERROR)' '(warnings are errors, for CI)' \
+	    WITH_ANALYZER	'$(WITH_ANALYZER)' '(run the GCC static analyzer)'
 	@echo ''
 	@echo 'There is no version or tag target: moses carries no release'
 	@echo 'number. There is no deploy target either -- the machine this'
@@ -304,7 +313,7 @@ options:					## every build knob, and what it defaults to
 	@echo 'Set any of them on the command line: make tests WITH_WERROR=yes'
 	@echo ''
 	@echo 'Where a reading goes -- three sinks, none of them exclusive:'
-	@printf '  %-20s %-21s %s\n'					\
+	@printf '  %-20s %-16s %s\n'					\
 	    'WITH_MQTT'		 'yes'	'publish to the broker'		\
 	    'WITH_LINEPROTOCOL'	 'no'	'one line per reading on stdout' \
 	    'WITH_DGRAM'	 'no'	'the same line to a unix datagram socket' \
@@ -312,17 +321,20 @@ options:					## every build knob, and what it defaults to
 	    'MOSES_DGRAM_PATH'	 '/run/moses.sock' 'the socket it goes to'
 	@echo ''
 	@echo 'What gets built:'
-	@printf '  %-20s %-21s %s\n'					\
+	@printf '  %-20s %-4s %s\n'					\
 	    'WITH_WATERMETER'	 'yes'	'moses_watermeter; the only one wanting M-Bus' \
-	    'WITH_BREAKER'	 'yes'	'moses_breaker; needs WITH_MQTT to be commanded' \
+	    'WITH_BREAKER'	 'yes'	'moses_breaker; MQTT is how it is commanded' \
 	    'WITH_TEMPERATURE'	 'yes'	'moses_sensors, the BME280 reader' \
+	    'WITH_TESTS'	 'no'	'build the unit tests'
+	@echo ''
+	@echo 'The front panel:'
+	@printf '  %-20s %-20s %s\n'					\
 	    'WITH_DISPLAY'	 'no'	'moses_display, the LVGL front panel' \
 	    'WITH_DISPLAY_TESTS' 'no'	'the screenshot tests'		\
-	    'WITH_TESTS'	 'no'	'build the unit tests'		\
 	    'DISPLAY_BACKEND'	 'automation-hat-mini' 'or sdl, for a window'
 	@echo ''
 	@echo 'Diagnostics:'
-	@printf '  %-20s %-21s %s\n'					\
+	@printf '  %-20s %-4s %s\n'					\
 	    'WITH_LOG'		 'no'	'log messages on stderr'	\
 	    'WITH_WERROR'	 'no'	'treat warnings as errors'	\
 	    'WITH_ANALYZER'	 'no'	'run the GCC static analyzer'
