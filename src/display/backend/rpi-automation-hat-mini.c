@@ -198,11 +198,41 @@ backend_init(void)
 	return -1;
     }
 
-    if ((bitters_init()						      < 0) ||
-	(bitters_gpio_pin_enable(&lcd_dc,        &lcd_dc_cfg)	      < 0) ||
-	(bitters_gpio_pin_enable(&lcd_backlight, &lcd_backlight_cfg)  < 0) ||
-	(bitters_spi_enable(&lcd_spi,            &lcd_spi_cfg)	      < 0)) {
-	LV_LOG_ERROR("failed to initialize bitters library");
+    /* One call per message. These four fail for unrelated reasons --
+     * a missing subsystem, a pin another driver owns, a spidev that
+     * is not there -- and a single message for all of them sends the
+     * reader to the library when the kernel was refusing a pin.
+     */
+    if (bitters_init() < 0) {
+	LV_LOG_ERROR("bitters_init failed");
+	return -1;
+    }
+
+    /* The data/command line is GPIO 9, which is SPI0's MISO as well:
+     * bitters/rpi.h defines BITTERS_RPI_P1_21 and BITTERS_RPI_SPI0_MISO
+     * as the same pin. Under a plain `dtparam=spi=on` the SPI driver
+     * owns it and the claim is refused; `dtoverlay=spi0-2cs,no_miso`
+     * frees it (docs/hardware.md, *LCD*). Spelled out here because the
+     * kernel says so only in dmesg, and because a kernel that allows
+     * the overlap does not make the pin free -- Linux 6.18.39 allowed
+     * it and 6.18.50 refuses, on a device tree that did not change.
+     */
+    if (bitters_gpio_pin_enable(&lcd_dc, &lcd_dc_cfg) < 0) {
+	LV_LOG_ERROR("cannot claim the LCD data/command pin (GPIO %d): "
+		     "it is SPI0's MISO too, so config.txt wants "
+		     "dtoverlay=spi0-2cs,no_miso", lcd_dc.id);
+	return -1;
+    }
+
+    if (bitters_gpio_pin_enable(&lcd_backlight, &lcd_backlight_cfg) < 0) {
+	LV_LOG_ERROR("cannot claim the LCD backlight pin (GPIO %d)",
+		     lcd_backlight.id);
+	return -1;
+    }
+
+    if (bitters_spi_enable(&lcd_spi, &lcd_spi_cfg) < 0) {
+	LV_LOG_ERROR("cannot open the LCD's SPI device (/dev/spidev%d.%d)",
+		     lcd_spi.id, lcd_spi.ce);
 	return -1;
     }
 

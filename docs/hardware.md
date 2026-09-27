@@ -48,7 +48,7 @@ Pin map
 | GPIO | Pin | Used by                       | `config.txt`    |
 | ---- | --- | ----------------------------- | --------------- |
 | 7    | 26  | LCD chip select (`SPI0`)      |                 |
-| 9    | 21  | LCD                           | `gpio=9=op,dl`  |
+| 9    | 21  | LCD data/command              | see *LCD* below |
 | 16   | 36  | relay 1, the valve            | `gpio=16=op,dl` |
 | 20   | 38  | `IN2`, pulse counting         | none: see below |
 | 25   | 22  | LCD                           | `gpio=25=op,dl` |
@@ -113,6 +113,33 @@ frame goes in one transfer:
 ~~~text
 spidev.bufsiz=65536
 ~~~
+
+Its data/command line is `GPIO 9`, which is also `SPI0`'s MISO. The SPI
+driver claims that pin, and the panel cannot then have it, so `SPI0` has
+to be told to leave it alone. In `config.txt`:
+
+~~~text
+dtparam=spi=on
+dtoverlay=spi0-2cs,no_miso
+gpio=9=op,dl
+gpio=25=op,dl
+~~~
+
+`no_miso` keeps both chip selects and gives up only the pin the ST7735
+never drives -- it is write-only, and nothing reads back from it.
+
+Without it `moses_display` stops at *"cannot claim the LCD data/command
+pin"* and the kernel logs, in `dmesg` and nowhere else:
+
+~~~text
+pinctrl-bcm2835 20200000.gpio: pin gpio9 already requested by
+20204000.spi; cannot claim for pinctrl-bcm2835:521
+~~~
+
+A kernel that allows the overlap is not evidence that the pin is free:
+Linux 6.18.39 permits the claim and 6.18.50 refuses it, on the same
+device tree, so a panel that worked before a kernel upgrade can stop at
+the reboot that installs one.
 
 ### Relay
 
