@@ -29,7 +29,7 @@ DESTDIR		?=
 # turned into CMake's ON/OFF by the indirection below, because `ifeq` is
 # GNU-only and BSD make rejects the line outright.
 WITH_LOG	?= no
-WITH_PUT	?= no
+WITH_LINEPROTOCOL ?= no
 WITH_TESTS	?= no
 WITH_DAEMONS	?= yes
 WITH_DISPLAY	?= no
@@ -49,7 +49,7 @@ ON_no		= OFF
 # value is only passed to cmake, and visible the moment `features`
 # prints it for someone to eval.
 CMAKEFLAGS	 = -DWITH_LOG=$(ON_$(WITH_LOG))
-CMAKEFLAGS	+= -DWITH_PUT=$(ON_$(WITH_PUT))
+CMAKEFLAGS	+= -DWITH_LINEPROTOCOL=$(ON_$(WITH_LINEPROTOCOL))
 CMAKEFLAGS	+= -DWITH_TESTS=$(ON_$(WITH_TESTS))
 CMAKEFLAGS	+= -DWITH_DAEMONS=$(ON_$(WITH_DAEMONS))
 CMAKEFLAGS	+= -DWITH_DISPLAY=$(ON_$(WITH_DISPLAY))
@@ -113,7 +113,7 @@ help:						## show this help (the default)
 	    WITH_DISPLAY	'$(WITH_DISPLAY)  (moses_display; pulls in LVGL, a long compile)' \
 	    WITH_DISPLAY_TESTS	'$(WITH_DISPLAY_TESTS)  (the screenshot tests; needs LVGL, not a panel)' \
 	    WITH_LOG		'$(WITH_LOG)  (log messages on stderr)'	      \
-	    WITH_PUT		'$(WITH_PUT)  (each reading to stdout, line protocol)' \
+	    WITH_LINEPROTOCOL	'$(WITH_LINEPROTOCOL)  (readings to stdout as InfluxDB line protocol)' \
 	    WITH_TESTS		'$(WITH_TESTS)  (build the unit tests; `make tests` sets it)' \
 	    WITH_WERROR		'$(WITH_WERROR)  (warnings are errors, for CI)' \
 	    WITH_ANALYZER	'$(WITH_ANALYZER)  (run the GCC static analyzer)'
@@ -218,7 +218,7 @@ options:					## every build knob, and what it defaults to
 	    'WITH_DISPLAY'	 'no'	'moses_display, the LVGL front panel' \
 	    'WITH_DISPLAY_TESTS' 'no'	'the screenshot tests'		\
 	    'WITH_LOG'		 'no'	'log messages on stderr'	\
-	    'WITH_PUT'		 'no'	'readings to stdout, line protocol' \
+	    'WITH_LINEPROTOCOL'	 'no'	'readings as InfluxDB line protocol' \
 	    'WITH_TESTS'	 'no'	'build the unit tests'		\
 	    'WITH_WERROR'	 'no'	'treat warnings as errors'	\
 	    'WITH_ANALYZER'	 'no'	'run the GCC static analyzer'	\
@@ -226,7 +226,7 @@ options:					## every build knob, and what it defaults to
 	    'MQTT_TOPIC_PREFIX'	 'water-breaker' 'compiled-in topic prefix'
 
 features:					## what this invocation selected, as shell variables
-	@echo '# WITH_LOG=$(WITH_LOG) WITH_PUT=$(WITH_PUT) WITH_TESTS=$(WITH_TESTS) WITH_DAEMONS=$(WITH_DAEMONS) WITH_DISPLAY=$(WITH_DISPLAY) DISPLAY_BACKEND=$(DISPLAY_BACKEND)'
+	@echo '# WITH_LOG=$(WITH_LOG) WITH_LINEPROTOCOL=$(WITH_LINEPROTOCOL) WITH_TESTS=$(WITH_TESTS) WITH_DAEMONS=$(WITH_DAEMONS) WITH_DISPLAY=$(WITH_DISPLAY) DISPLAY_BACKEND=$(DISPLAY_BACKEND)'
 	@echo "MOSES_CMAKE_FLAGS='$(CMAKEFLAGS)'"
 	@echo "MOSES_BUILD='$(BUILD)'"
 

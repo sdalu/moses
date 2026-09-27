@@ -19,7 +19,7 @@ endif()
 #
 
 option(WITH_LOG "Enable log messages on stderr"                            OFF)
-option(WITH_PUT "Write each reading to stdout (line protocol)"            OFF)
+option(WITH_LINEPROTOCOL "Write each reading to stdout as InfluxDB line protocol" OFF)
 option(WITH_DISPLAY "Build moses_display, the LVGL front panel (needs a C++ compiler)" OFF)
 option(WITH_DISPLAY_TESTS "Build the display screenshot tests (implies LVGL)"          OFF)
 
@@ -48,8 +48,8 @@ add_compile_definitions(_GNU_SOURCE)
 if (WITH_LOG)
     add_compile_definitions(WITH_LOG)
 endif()
-if (WITH_PUT)
-    add_compile_definitions(WITH_PUT)
+if (WITH_LINEPROTOCOL)
+    add_compile_definitions(WITH_LINEPROTOCOL)
 endif()
 add_compile_definitions(MQTT_TOPIC_PREFIX="${MQTT_TOPIC_PREFIX}")
 

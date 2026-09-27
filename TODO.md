@@ -95,7 +95,7 @@ own, behind `WITH_DGRAM`** -- deliberately *not* inside
 `mqtt_publish()`, which was the first shape considered and is the wrong
 one:
 
-- `WITH_PUT` already establishes the pattern. It adds a parallel output
+- `WITH_LINEPROTOCOL` already establishes the pattern. It adds a parallel output
   (`PUT_DATA`, a line to stdout) beside each MQTT publish, compiled in
   conditionally and called explicitly at the site. A local socket is the
   same kind of thing and should look like it; `DGRAM_PUBLISH()` in
@@ -119,7 +119,7 @@ one:
 
 The cost, stated plainly: each daemon gains a line beside each of its
 publishes, rather than all three inheriting it from one place. That is
-the same cost `WITH_PUT` already pays, and it buys a call that is
+the same cost `WITH_LINEPROTOCOL` already pays, and it buys a call that is
 visible where it happens instead of hidden two layers down.
 
 **The name on the panel.** Over MQTT it is the last segment of

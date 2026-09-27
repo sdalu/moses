@@ -92,7 +92,23 @@ struct gpio_v2_line_request;            // <linux/gpio.h>, only consumers need i
  * Output                                                               *
  ************************************************************************/
 
-#ifdef WITH_PUT
+/*
+ * Each reading as one line of InfluxDB line protocol:
+ *
+ *     <measurement> <field>[,<field>...] <nanosecond timestamp>
+ *
+ *     watermeter index=213044.000 1790430000000000000
+ *     environment temperature=21.42,pressure=102134 1790430000000000000
+ *     watermeter failure="read" 1790430000000000000
+ *
+ * The quotes around a failure are not decoration: a field value that is
+ * not a number, a boolean or a quoted string is a parse error, and the
+ * whole line is refused. Unquoted, `failure=set-state` could not be
+ * read as anything at all, so these lines were silently dropped by
+ * anything consuming them.
+ */
+
+#ifdef WITH_LINEPROTOCOL
 
 #ifndef PUT_LOCK
 #define PUT_LOCK()
@@ -127,7 +143,7 @@ struct gpio_v2_line_request;            // <linux/gpio.h>, only consumers need i
 	PUT_LOCK()							\
 	struct timespec ts;						\
 	clock_gettime(PUT_CLOCK, &ts);					\
-	fprintf(stdout, "%s failure=%s %lld%09ld\n",			\
+	fprintf(stdout, "%s failure=\"%s\" %lld%09ld\n",		\
 		type, failure, (long long)ts.tv_sec, ts.tv_nsec);	\
 	fflush(stdout);							\
 	PUT_UNLOCK()							\

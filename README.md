@@ -490,6 +490,29 @@ each gets its own, letting Home Assistant (and friends) track them
 independently.
 
 
+### Line protocol output
+
+With `WITH_LINEPROTOCOL`, every reading is also written to stdout as one
+line, ready to pipe into anything that speaks InfluxDB line protocol:
+
+~~~
+watermeter index=213044.000 1790489588441408829
+environment temperature=21.42,pressure=102134,humidity=31.68 1790489588441443042
+breaker state=0 1790489588441447164
+watermeter failure="read" 1790489588441449592
+~~~
+
+A failure is a reading too: the measurement stays the same and a
+`failure` field says what went wrong, so a gap in the data has a reason
+beside it rather than being merely a gap.
+
+Its value is quoted, and that is not cosmetic — a field value which is
+neither a number, a boolean nor a quoted string is a parse error and the
+whole line is refused. Before that quoting, `failure=set-state` could
+not be read as anything at all, and every failure line was dropped by
+whatever was consuming them.
+
+
 Common options
 --------------
 
@@ -735,14 +758,14 @@ Build
 -----
 
 ~~~sh
-cmake -B build -DWITH_LOG=1 -DWITH_PUT=1 -DMQTT_TOPIC_PREFIX=water-breaker
+cmake -B build -DWITH_LOG=1 -DWITH_LINEPROTOCOL=1 -DMQTT_TOPIC_PREFIX=water-breaker
 make  -C build
 ~~~
 
 | CMake options       | Description                                                 |
 |---------------------|-------------------------------------------------------------|
 | `WITH_LOG`          | Enable log messages on stderr                               |
-| `WITH_PUT`          | Also write each reading to stdout, one line in an InfluxDB-ish line-protocol format (`<measurement> <fields> <nanosecond-timestamp>`), handy for piping into a time-series database |
+| `WITH_LINEPROTOCOL` | Also write each reading to stdout as one line of [InfluxDB line protocol](https://docs.influxdata.com/influxdb/latest/reference/syntax/line-protocol/) — `<measurement> <fields> <nanosecond-timestamp>` — for piping into a time-series database. Telegraf, VictoriaMetrics and QuestDB read the same format |
 | `WITH_DISPLAY`      | Build [`moses_display`](#moses_display), the LVGL front panel. Off by default; needs a C++ compiler (LVGL's build enables the language even though nothing here uses it) and pulls in the `3rd/lvgl` submodule, which is a long compile on a Pi Zero. The three daemons build with just a C compiler. |
 | `WITH_DISPLAY_TESTS`| Build the [screenshot tests](#tests). Needs LVGL but no panel, so it stands alone on a machine that cannot build `moses_display` at all. |
 | `WITH_DAEMONS`      | Build the three daemons (**on** by default). Turn it off to build only what needs neither mosquitto nor M-Bus — those libraries are then not looked for either, which is what lets the tests configure on a machine that has neither. |
