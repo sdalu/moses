@@ -135,6 +135,26 @@ the failure worth having: a house with no water is a fault, a house with
 water and no meter reading is an inconvenience.
 
 
+One of each, by a lock the kernel drops
+---------------------------------------
+
+Each program holds `flock()` on `/var/run/moses/<name>.pid` for its
+whole life, and a second copy that cannot take it exits naming the pid
+written there. The lock rather than the file's existence -- a pidfile,
+or a symlink, whose creation is atomic -- because what matters is not
+two starts at once but a start after a crash. A file left by a dead
+process is still there, its pid may by now be someone else's, and
+clearing it is a read then a remove that two restarts under
+`loop-runner` can interleave into two running copies. A lock goes with
+the process however it dies, so there is nothing stale to judge. The
+name is the caller's, not the executable's, so a scratch build beside
+the service takes the same lock.
+
+A scan of `/proc/<pid>/comm` is kept beside it, for copies built before
+the lock -- the daemons running when it was added hold none -- and as
+the whole of the check for a user who cannot write `/var/run`.
+
+
 The Linux GPIO half is its own library
 --------------------------------------
 

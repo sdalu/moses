@@ -576,6 +576,13 @@ main(int argc, char **argv)
     mqtt_config_from_env(&watermeter.mqtt.handler);
     watermeter_parse_config(argc, argv, &watermeter);
 
+    // One at a time (common.c, single_instance)
+    pid_t other = single_instance("watermeter");
+    if (other > 0)
+	DIE(2, "already running as pid %d", (int)other);
+    if (other < 0)
+	DIE(2, "already running");
+
     // Initialization
     if (watermeter_init(&watermeter) < 0)
 	DIE(2, "failed to initialize");

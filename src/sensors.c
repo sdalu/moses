@@ -349,6 +349,13 @@ int main(int argc, char *argv[]) {
     // Configuration
     mqtt_config_from_env(&sensors.mqtt.handler);
     sensors_parse_config(argc, argv, &sensors);
+
+    // One at a time (common.c, single_instance)
+    pid_t other = single_instance("sensors");
+    if (other > 0)
+	DIE(2, "already running as pid %d", (int)other);
+    if (other < 0)
+	DIE(2, "already running");
     
     // Initialization
     if (sensors_init() < 0)

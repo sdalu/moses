@@ -31,6 +31,7 @@
 
 #include "lvgl.h"
 
+#include "common.h"
 #include "backend.h"
 #include "internal.h"
 
@@ -220,6 +221,23 @@ backend_init(void)
 {
     if (lcd.initialized) {
 	LV_LOG_ERROR("backend already initialized");
+	return -1;
+    }
+
+    /* Before any claim: a moses_display already on the panel holds its
+     * pins, and the refusal would then read like a missing no_miso and
+     * send the reader to config.txt. Here rather than in main() because
+     * only this backend owns hardware -- two SDL windows are harmless.
+     * That covers --check too. */
+    pid_t other = single_instance("display");
+    if (other > 0) {
+	LV_LOG_ERROR("the panel is already driven by pid %d, "
+		     "another moses_display: stop that one first", (int)other);
+	return -1;
+    }
+    if (other < 0) {			/* held, its pid not written yet */
+	LV_LOG_ERROR("the panel is already driven by another "
+		     "moses_display: stop that one first");
 	return -1;
     }
 

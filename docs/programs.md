@@ -168,6 +168,25 @@ Supervision
 
 The daemons are not expected to exit.
 
+Each runs once per machine. A second copy of a daemon exits with
+status 2 before touching anything, naming the one already running:
+*"moses_watermeter: already running as pid 10838"*. Each holds a lock,
+`/var/run/moses/<name>.pid` (`/run/moses` on Linux) locked with
+`flock()`, which the kernel drops however the process ends, so a crash
+leaves nothing to clean up; a copy renamed on disk takes the same lock.
+Another process with the same name is refused too, for copies built
+before the lock, and that is all that is checked when the lock cannot
+be made -- running as a user who cannot write `/var/run`. For `moses_display`
+the check is the panel backend's, made before any pin is claimed, so
+`--check` next to a running panel says so rather than blaming the
+wiring. The SDL backend has no such check; there a second display is
+stopped only when the first one owns `moses.display` -- it reads the bus
+and the policy lets it take the name. With `--source=mqtt`, without
+`WITH_DBUS`, with no system bus, or with the name refused, nothing
+stops a second window.
+Under `loop-runner` a refused copy comes back every `-s` seconds with a
+`crash` each time.
+
 [`loop-runner`](../scripts/loop-runner) restarts a command when it stops
 and publishes a `crash` on the `error` topic. It reads the same
 environment as the daemons.

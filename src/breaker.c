@@ -400,6 +400,13 @@ main(int argc, char **argv)
     // Configuration
     mqtt_config_from_env(&breaker.mqtt.handler);
     breaker_parse_config(argc, argv, &breaker);
+
+    // One at a time (common.c, single_instance)
+    pid_t other = single_instance("breaker");
+    if (other > 0)
+	DIE(2, "already running as pid %d", (int)other);
+    if (other < 0)
+	DIE(2, "already running");
     
     // Initialization
     if (breaker_init(&breaker) < 0)

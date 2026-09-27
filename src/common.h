@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <time.h>
+#include <sys/types.h>
 
 #ifdef WITH_MQTT
 #include <mosquitto.h>
@@ -317,5 +318,13 @@ int gpio_open_line(const char *chip, uint32_t pin, const char *label,
 void sleep_until(clockid_t clock, const struct timespec *deadline);
 
 void reduced_latency(void);
+
+// Take the lock that makes this the one `name` running on this machine
+// (/var/run/moses/<name>.pid, flock()ed for the life of the process).
+// 0 when it is ours; else the pid of the one that has it, or -1 when
+// that one is running but its pid cannot be read. Checks by process name
+// as well, for a copy that predates the lock, and by name alone when
+// the lock cannot be made at all (not root). See common.c.
+pid_t single_instance(const char *name);
 
 #endif

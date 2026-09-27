@@ -25,6 +25,11 @@
 #include <time.h>
 #include <sched.h>
 #include <sys/mman.h>
+#include <ctype.h>
+#include <dirent.h>
+#include <fcntl.h>
+#include <sys/file.h>
+#include <sys/stat.h>
 
 #ifdef WITH_MQTT
 #include <mosquitto.h>
@@ -147,6 +152,147 @@ sleep_until(clockid_t clock, const struct timespec *deadline)
     while ((rc = clock_nanosleep(clock, TIMER_ABSTIME, deadline, NULL)) != 0) {
 	assert(rc == EINTR);
     }
+}
+
+
+/*
+ * Every moses_* owns something that does not share: the M-Bus port, the
+ * relay's line, the BME280's readings on MQTT, the panel's pins. A second
+ * copy of a daemon either fails in words that point at the hardware --
+ * the panel's refused pin reads exactly like a missing no_miso -- or,
+ * worse, does not fail: two readers on one serial port garble each
+ * other's frames. So each asks at start, and names the one it found.
+ */
+
+#ifndef INSTANCE_DIR			// overridden only to test it
+#define INSTANCE_DIR	"/var/run/moses"	// /run/moses on Linux
+#endif
+
+
+/*
+ * The fallback: another process by /proc/<pid>/comm against our own, so
+ * the kernel's truncation to 15 characters (moses_watermete) applies to
+ * both sides alike. Threads are not listed in /proc, only processes, so
+ * our own threads never match. Nothing on FreeBSD, which has no /proc.
+ */
+static pid_t
+instance_by_name(void)
+{
+    char  self[32] = "";
+    pid_t found    = 0;
+    FILE *f;
+    DIR  *proc;
+
+    if ((f = fopen("/proc/self/comm", "re")) == NULL)
+	return 0;
+    if (fgets(self, sizeof(self), f) == NULL)
+	self[0] = '\0';
+    fclose(f);
+    self[strcspn(self, "\n")] = '\0';
+    if ((self[0] == '\0') || ((proc = opendir("/proc")) == NULL))
+	return 0;
+
+    struct dirent *de;
+    while ((found == 0) && ((de = readdir(proc)) != NULL)) {
+	if (! isdigit((unsigned char)de->d_name[0]))
+	    continue;
+
+	pid_t pid = (pid_t)strtol(de->d_name, NULL, 10);
+	if (pid == getpid())
+	    continue;
+
+	char path[64];
+	char comm[32] = "";
+	snprintf(path, sizeof(path), "/proc/%d/comm", (int)pid);
+	if ((f = fopen(path, "re")) == NULL)
+	    continue;		// gone since readdir
+	if (fgets(comm, sizeof(comm), f) == NULL)
+	    comm[0] = '\0';
+	fclose(f);
+	comm[strcspn(comm, "\n")] = '\0';
+
+	if (strcmp(comm, self) == 0)
+	    found = pid;
+    }
+    closedir(proc);
+    return found;
+}
+
+
+
+/*
+ * The lock: INSTANCE_DIR/<name>.pid, held with flock() for as long as
+ * this process lives. The kernel drops it the moment the process dies,
+ * however it dies, so there is never a stale lock to judge or remove --
+ * which is what a lock made of a file's existence, a pidfile or a
+ * symlink, cannot say: after a crash it is still there, its pid may by
+ * now be someone else's, and clearing it is a read then a remove that
+ * two restarts can interleave. The file itself may stay forever; only
+ * the lock on it counts. The pid in it is for the message.
+ *
+ * Named by the caller rather than by the executable, so a copy renamed
+ * on disk -- a scratch build beside the service -- takes the same lock.
+ *
+ * The name scan is still made when the lock was had, for a copy that
+ * predates the lock and so does not hold one: the daemons running when
+ * this was written. It can go once none of those is left anywhere.
+ */
+pid_t
+single_instance(const char *name)
+{
+    static int fd = -1;			// held, never closed
+    char       path[PATH_MAX];
+
+    if (fd >= 0)
+	return 0;			// already ours
+
+    snprintf(path, sizeof(path), INSTANCE_DIR "/%s.pid", name);
+    if ((mkdir(INSTANCE_DIR, 0755) < 0) && (errno != EEXIST)) {
+	LOG("cannot create " INSTANCE_DIR " (%s), checking by name only",
+	    strerror(errno));
+	return instance_by_name();
+    }
+
+    // Not truncated on open: a loser must not clobber the holder's pid.
+    int f = open(path, O_RDWR | O_CREAT | O_CLOEXEC, 0644);
+    if (f < 0) {
+	LOG("cannot open %s (%s), checking by name only",
+	    path, strerror(errno));
+	return instance_by_name();
+    }
+
+    if (flock(f, LOCK_EX | LOCK_NB) < 0) {
+	if (errno != EWOULDBLOCK) {
+	    LOG("cannot lock %s (%s), checking by name only",
+		path, strerror(errno));
+	    close(f);
+	    return instance_by_name();
+	}
+
+	// Held. The holder writes its pid just after locking, so this can
+	// be caught between the two; the name scan then has it instead.
+	char  buf[32];
+	long  pid = 0;
+	ssize_t n = pread(f, buf, sizeof(buf) - 1, 0);
+	close(f);
+	if (n > 0) {
+	    buf[n] = '\0';
+	    pid = strtol(buf, NULL, 10);
+	}
+	if (pid > 0)
+	    return (pid_t)pid;
+	pid_t other = instance_by_name();
+	return (other > 0) ? other : -1;
+    }
+
+    // Ours: say who holds it.
+    char buf[32];
+    int  len = snprintf(buf, sizeof(buf), "%d\n", (int)getpid());
+    if ((ftruncate(f, 0) < 0) || (pwrite(f, buf, len, 0) != len))
+	LOG("cannot write the pid to %s (%s)", path, strerror(errno));
+    fd = f;
+
+    return instance_by_name();
 }
 
 

@@ -145,6 +145,10 @@ Linux 6.18.39 permits the claim and 6.18.50 refuses it, on the same
 device tree, so a panel that worked before a kernel upgrade can stop at
 the reboot that installs one.
 
+A `moses_display` already on the panel holds these pins too; a second
+one, `--check` included, says *"the panel is already driven by pid N"*
+before it claims anything, so that case does not reach this message.
+
 ### Relay
 
 `GPIO 16`, driven low by default so the valve stays open. Wire +24V to
