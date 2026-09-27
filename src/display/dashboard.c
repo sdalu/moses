@@ -253,20 +253,36 @@ format_duration(char *out, size_t len, double seconds)
  * The half of ups.status worth 160 pixels.
  *
  * NUT reports a set of flags and most of them are noise on a panel this
- * size. OL is the routine state, and a white reading already says the
- * power is fine; HB is the battery merely being full; CHRG and DISCHRG
+ * size. OL and OB are said in words instead, "mains" or "battery" (see
+ * show_ups()); HB is the battery merely being full; CHRG and DISCHRG
  * only repeat what OL and OB have said. What survives is what is worth
- * interrupting someone with -- OB, LB -- and anything else is passed
+ * interrupting someone with -- LB -- and anything else is passed
  * through untouched, so RB, ALARM, or a flag NUT adds later still
  * reaches the panel rather than being enumerated here and missed.
  *
  * "HB OL CHRG 98%" was once wider than its row and overlapped its own
  * label, which is what this exists to stop.
  */
+/* Whether `flag` is one of the space-separated flags of `status`. */
+static bool
+has_flag(const char *status, const char *flag)
+{
+    char  copy[MODEL_STATUS_MAX];
+    char *save = NULL;
+
+    snprintf(copy, sizeof(copy), "%s", status);
+    for (char *tok = strtok_r(copy, " ", &save) ; tok != NULL ;
+	 tok = strtok_r(NULL, " ", &save))
+	if (strcmp(tok, flag) == 0)
+	    return true;
+    return false;
+}
+
+
 static void
 condense_status(char *out, size_t len, const char *status)
 {
-    static const char *const noise[] = { "OL", "HB", "CHRG", "DISCHRG" };
+    static const char *const noise[] = { "OL", "OB", "HB", "CHRG", "DISCHRG" };
 
     char   copy[MODEL_STATUS_MAX];
     char  *save = NULL;
@@ -458,16 +474,25 @@ show_ups(const struct model *m)
      * cannot disagree with the runtime estimate about what is going on. */
     enum ink ink = ups_on_battery(m->ups.status) ? INK_ALARM : INK_NORMAL;
 
-    /* The flags go on the label line and the figures on the value line,
-     * so neither has to give way to the other. */
+    /* Where the power is coming from, in words, then the flags worth
+     * seeing -- all on the label line, and the figures on the value
+     * line, so neither has to give way to the other. A status that says
+     * neither OL nor on-battery (an event name, a UPS that has not
+     * settled) gets no word rather than a guess. */
     char flags[MODEL_STATUS_MAX];
     condense_status(flags, sizeof(flags), m->ups.status);
-    if (flags[0] != '\0') {
-	snprintf(buf, sizeof(buf), "UPS %s", flags);
-	set(&w.ups_label, ink, buf);
-    } else {
-	set(&w.ups_label, ink, "UPS");
-    }
+
+    /* "battery" gives way to "batt" when flags follow it: "UPS battery
+     * LB RB" is wider than the chip, and the flag cut off would be the
+     * one worth reading (test/ref-imgs/dashboard-ups-widest.png). */
+    const char *power = (ink == INK_ALARM)
+			    ? ((flags[0] != '\0') ? "batt" : "battery")
+		      : has_flag(m->ups.status, "OL") ? "mains"
+		      : NULL;
+    snprintf(buf, sizeof(buf), "UPS%s%s%s%s",
+	     power ? " " : "", power ? power : "",
+	     (flags[0] != '\0') ? " " : "", flags);
+    set(&w.ups_label, ink, buf);
 
     n = 0;
     if (m->ups.charge >= 0)

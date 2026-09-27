@@ -90,8 +90,8 @@ the [system bus](interfaces.md#the-system-bus) (`--source`), and draws:
 | (o)  213025 L                  [+3]  |
 |                                      |
 | +-----------------+ +--------------+ |
-| | VALVE           | | UPS OB       | |
-| | OPEN            | | 42% ~30m     | |
+| | VALVE           | | UPS mains    | |
+| | OPEN            | | 98%          | |
 | +-----------------+ +--------------+ |
 +--------------------------------------+
 ~~~
@@ -159,9 +159,11 @@ second:
   `pijuice` driver), in which case read it as an order of magnitude.
   The MQTT events still repaint at once on a change.
 
-`OL`, `HB`, `CHRG` and `DISCHRG` are left out of the status shown;
-every other flag (`OB`, `LB`, `RB`, `ALARM`, …) goes on the chip's
-label line, the figures on its value line.
+The chip's label says where the power comes from -- `mains`, or
+`battery` in red (`batt` when flags follow it, to fit) -- and then
+every flag worth reading (`LB`, `RB`, `ALARM`, …); `OL`, `OB`, `HB`,
+`CHRG` and `DISCHRG` are said by the word or left out. The figures go
+on its value line.
 
 
 Supervision
