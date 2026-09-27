@@ -112,6 +112,13 @@ it. A flow of `+N` stays up for 30 seconds after a pulse report.
 | `-i`, `--interval=SEC` | Poll `upsd` every SEC (default 10s)                      |
 | `-s`, `--stale=SEC`    | Grey out a reading older than SEC (default 150s)         |
 | `-u`, `--ups[=NAME]`   | Poll `upsd` on this machine; without NAME, its first UPS |
+| `-c`, `--check`        | Bring the panel up, report, and exit                     |
+
+`--check` is for a new or rewired machine: it makes the same checks a
+normal start does -- the data/command pin, the SPI device, spidev's
+buffer against the largest transfer -- and exits 0 once the panel is up,
+without drawing. [`make check-spi`](hardware.md#lcd) asks the boot
+configuration the same questions without a built binary.
 
 It never touches the relay, and has no `--reduced-latency`: on a
 single-core Pi that would compete with the program that shuts the water.

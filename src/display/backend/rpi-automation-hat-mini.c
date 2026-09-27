@@ -20,6 +20,7 @@
  * itself descended from the experimental src/integration/ this replaces.
  */
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -188,6 +189,30 @@ lcd_send_color(lv_display_t *disp,
 }
 
 
+/*
+ * What spidev will carry in one ioctl, or 0 when it cannot be asked.
+ *
+ * The module's default is a single page, and a frame is larger than
+ * that, so a panel on a machine that was never told otherwise fails
+ * halfway through a transfer rather than at startup. Asking costs one
+ * small read and turns that into a sentence naming the fix.
+ */
+static unsigned long
+spidev_bufsiz(void)
+{
+    static const char path[] = "/sys/module/spidev/parameters/bufsiz";
+    unsigned long     value  = 0;
+    FILE             *f      = fopen(path, "re");
+
+    if (f == NULL)
+	return 0;
+    if (fscanf(f, "%lu", &value) != 1)
+	value = 0;
+    fclose(f);
+    return value;
+}
+
+
 //== Backend ===========================================================
 
 int
@@ -253,6 +278,20 @@ backend_init(void)
 	lv_color_format_get_size(lv_display_get_color_format(disp));
     if (buf_size > LCD_BUF_MAX)
 	buf_size = LCD_BUF_MAX;
+
+    /* buf_size is the largest single write lcd_send_color() makes, so it
+     * is exactly what spidev has to be willing to carry. Checked here
+     * rather than in a script because this is the only place the figure
+     * is known: it comes from the panel's size, LCD_BUF_FRACTION and
+     * whatever colour format LVGL settled on. A bufsiz of 0 means the
+     * file was not there to read, which is not a verdict. */
+    unsigned long bufsiz = spidev_bufsiz();
+    if ((bufsiz > 0) && (bufsiz < buf_size)) {
+	LV_LOG_ERROR("spidev carries %lu bytes and a transfer is %" LV_PRIu32
+		     ": add spidev.bufsiz=%" LV_PRIu32
+		     " or more to cmdline.txt", bufsiz, buf_size, buf_size);
+	goto failed;
+    }
 
     lcd.buf_1 = malloc(buf_size);
     lcd.buf_2 = malloc(buf_size);

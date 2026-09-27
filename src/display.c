@@ -76,6 +76,7 @@ struct display {
     char         *ups;			/**< the UPS, NULL to discover	*/
     unsigned long ups_interval;
     unsigned long stale_after;
+    bool          check_only;		/**< --check: stop once it is up */
 };
 
 
@@ -158,12 +159,13 @@ device_name(const char *prefix)
 static void
 display_parse_config(int argc, char **argv, struct display *d)
 {
-    static const char *const shortopts = "+i:s:u::h";
+    static const char *const shortopts = "+i:s:u::ch";
 
     struct option longopts[] = {
 	{ "interval",	required_argument,	NULL, 'i' },
 	{ "stale",	required_argument,	NULL, 's' },
 	{ "ups",	optional_argument,	NULL, 'u' },
+	{ "check",	no_argument,		NULL, 'c' },
 	{ "help",	no_argument,		NULL, 'h' },
 	{ NULL }
     };
@@ -203,6 +205,9 @@ display_parse_config(int argc, char **argv, struct display *d)
 		d->ups = argv[optind++];
 	    }
 	    break;
+	case 'c':
+	    d->check_only = true;
+	    break;
 	case 'h':
 	    printf("%s [opts]\n", __progname);
 	    printf("  -i, --interval=SEC        poll upsd every SEC (default %d)\n",
@@ -212,6 +217,8 @@ display_parse_config(int argc, char **argv, struct display *d)
 	    printf("  -u, --ups[=NAME]          poll upsd here, for charge and remaining time;\n");
 	    printf("                            without NAME, the first UPS upsd lists\n");
 	    printf("                            (omit -u entirely: UPS state from MQTT events)\n");
+	    printf("  -c, --check               bring the panel up, report, and exit;\n");
+	    printf("                            the same checks a normal start makes\n");
 	    printf("\n");
 	    exit(0);
 	default:
@@ -243,6 +250,15 @@ main(int argc, char *argv[])
     const struct backend_info *info = backend_info();
     LOG("Panel                : %s, %" LV_PRIu32 "x%" LV_PRIu32,
 	info->name, info->hor_res, info->ver_res);
+
+    /* --check wanted the panel brought up and nothing else. Everything
+     * that can be wrong about the wiring, the pins and the SPI device has
+     * already said so by here, in the same words a normal start uses --
+     * this option adds no check of its own, it only stops. */
+    if (d->check_only) {
+	backend_deinit();
+	return 0;
+    }
 
     backend_set_backlight(true);
     dashboard_create(backend_accent_color(), d->stale_after,
