@@ -157,7 +157,7 @@ On `leak`, retained, at start -- so a report from before a restart is
 replaced -- and whenever the level, the kind or the start changes:
 
 ~~~json
-{ "level": "alert", "kind": "slow", "since": 1790483260, "litres": 8, "rate": 3.30, "source": "index" }
+{ "level": "alert", "kind": "slow", "since": 1790483260, "volume": 8, "rate": 3.30, "source": "index" }
 ~~~
 
 and the same as a `watermeter leak=` line on stdout and on the system

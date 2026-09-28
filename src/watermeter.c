@@ -439,14 +439,14 @@ leak_publish(struct watermeter *w)
     }
 
     const char *source = leak_from_index(w) ? "index" : "pulse";
-    PUT_DATA("watermeter", "leak=%d,kind=\"%s\",since=%lld,litres=%lu,rate=%.2f,"
+    PUT_DATA("watermeter", "leak=%d,kind=\"%s\",since=%lld,volume=%lu,rate=%.2f,"
 	     "source=\"%s\"", (int)r->level, leak_kind_name(r->kind), since,
-	     r->litres, r->rate, source);
+	     r->volume, r->rate, source);
     MQTT_PUBLISH(&w->mqtt, leak, 1, true,
 		 "{ \"level\": \"%s\", \"kind\": \"%s\", \"since\": %lld, "
-		 "\"litres\": %lu, \"rate\": %.2f, \"source\": \"%s\" }",
+		 "\"volume\": %lu, \"rate\": %.2f, \"source\": \"%s\" }",
 		 leak_level_name(r->level), leak_kind_name(r->kind), since,
-		 r->litres, r->rate, source);
+		 r->volume, r->rate, source);
     LOG("leak                 : %s %s", leak_level_name(r->level),
 	leak_kind_name(r->kind));
 }

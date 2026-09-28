@@ -151,7 +151,7 @@ main(void)
 	CHECK(changes == 1);
 	CHECK(leak_report(&l)->kind == LEAK_SLOW);
 	CHECK(leak_report(&l)->since == 600);
-	CHECK(leak_report(&l)->litres == 10);
+	CHECK(leak_report(&l)->volume == 10);
     }
 
     // ... seven of them are not enough

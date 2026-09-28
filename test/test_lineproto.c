@@ -518,7 +518,7 @@ static void
 test_leak(void)
 {
     {
-	PARSE(LIT("watermeter leak=2,kind=\"flow\",since=1790483260,litres=134,"
+	PARSE(LIT("watermeter leak=2,kind=\"flow\",since=1790483260,volume=134,"
 		  "rate=5.60,source=\"index\" 1790489588441452110"));
 	CHECK(ok);
 	CHECK(n == 1);
@@ -531,7 +531,7 @@ test_leak(void)
     }
     {
 	/* All clear: what is published at start and after a leak ends */
-	PARSE(LIT("watermeter leak=0,kind=\"none\",since=0,litres=0,rate=0.00,"
+	PARSE(LIT("watermeter leak=0,kind=\"none\",since=0,volume=0,rate=0.00,"
 		  "source=\"pulse\" 1790489588441452110"));
 	CHECK(ok);
 	CHECK(n == 1);

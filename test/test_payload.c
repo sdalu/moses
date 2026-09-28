@@ -131,7 +131,7 @@ test_json_leak(void)
 {
     static const char leak[] =
 	"{ \"level\": \"alert\", \"kind\": \"flow\", \"since\": 1790483260, "
-	"\"litres\": 134, \"rate\": 5.60, \"source\": \"index\" }";
+	"\"volume\": 134, \"rate\": 5.60, \"source\": \"index\" }";
     char   w[8];
     double v;
 

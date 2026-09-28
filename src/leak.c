@@ -21,11 +21,11 @@
 
 static bool
 set_report(struct leak *l, enum leak_level level, enum leak_kind kind,
-	   double since, unsigned long litres, double rate)
+	   double since, unsigned long volume, double rate)
 {
     struct leak_report r = {
 	.level = level, .kind = kind, .since = since,
-	.litres = litres, .rate = rate,
+	.volume = volume, .rate = rate,
     };
     struct leak_report *o = &l->report;
 

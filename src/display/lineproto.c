@@ -189,7 +189,7 @@ leak_field(const char *key, const char *value, struct lineproto_reading *r)
 	return true;
     }
     /* On the wire, not on the panel. */
-    return (strcmp(key, "litres") == 0) || (strcmp(key, "source") == 0);
+    return (strcmp(key, "volume") == 0) || (strcmp(key, "source") == 0);
 }
 
 

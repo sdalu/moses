@@ -54,7 +54,7 @@ struct leak_report {
     enum leak_level level;
     enum leak_kind  kind;
     double          since;         // when the signature started
-    unsigned long   litres;        // counted since then (flow, slow)
+    unsigned long   volume;        // L counted since then (flow, slow)
     double          rate;          // L/min (flow), L/h (slow), 0 (quiet)
 };
 

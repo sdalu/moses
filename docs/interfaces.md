@@ -40,7 +40,7 @@ report from before a restart is replaced) and whenever the level, the
 kind or the start of the signature changes:
 
 ~~~json
-{ "level": "alert", "kind": "flow", "since": 1790483260, "litres": 134, "rate": 5.60, "source": "index" }
+{ "level": "alert", "kind": "flow", "since": 1790483260, "volume": 134, "rate": 5.60, "source": "index" }
 ~~~
 
 | Field    | Meaning                                                              |
@@ -48,7 +48,7 @@ kind or the start of the signature changes:
 | `level`  | `ok`, `warn` or `alert`                                              |
 | `kind`   | `none`, `flow`, `slow` or `quiet`                                    |
 | `since`  | Unix time the signature started, `0` when `ok`                       |
-| `litres` | Counted since then (`flow`), or the run's length (`slow`)            |
+| `volume` | In litres: counted since then (`flow`), or the run's length (`slow`) |
 | `rate`   | L/min for `flow`, L/h for `slow`, `0` otherwise                      |
 | `source` | Where the litres came from: `index` or `pulse` ([`--leak-source`](programs.md#leak-signatures)) |
 
@@ -80,7 +80,7 @@ watermeter index=213044.000 1790489588441408829
 environment temperature=21.42,pressure=102134,humidity=31.68 1790489588441443042
 breaker state=0 1790489588441447164
 watermeter failure="read" 1790489588441449592
-watermeter leak=2,kind="flow",since=1790483260,litres=134,rate=5.60,source="index" 1790489588441452110
+watermeter leak=2,kind="flow",since=1790483260,volume=134,rate=5.60,source="index" 1790489588441452110
 ~~~
 
 A failure is a reading too: the same measurement, with a quoted
