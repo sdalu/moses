@@ -141,6 +141,22 @@ payload_json_string(const char *data, size_t len, const char *key,
 }
 
 bool
+payload_nut_word(const char *text)
+{
+    if ((text == NULL) || (text[0] == '\0') || (text[0] == ' '))
+	return false;
+
+    for (const char *p = text ; *p != '\0' ; p++) {
+	if ((*p >= 'A') && (*p <= 'Z'))
+	    continue;
+	if ((*p == ' ') && (p[1] != ' ') && (p[1] != '\0'))
+	    continue;			/* one space between words, none trailing */
+	return false;
+    }
+    return true;
+}
+
+bool
 payload_online(const char *data, size_t len, bool *online)
 {
     char buf[PAYLOAD_MAX];

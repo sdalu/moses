@@ -164,6 +164,26 @@ test_json_leak(void)
 }
 
 
+/* What the UPS state topic may carry, and the stray it once did. */
+static void
+test_nut_word(void)
+{
+    CHECK(payload_nut_word("OL") == true);
+    CHECK(payload_nut_word("OL CHRG") == true);
+    CHECK(payload_nut_word("OB LB RB") == true);
+    CHECK(payload_nut_word("ONLINE") == true);		/* a NOTIFYTYPE */
+
+    CHECK(payload_nut_word("unknown") == false);	/* nut-notify, untold */
+    CHECK(payload_nut_word("Online") == false);
+    CHECK(payload_nut_word("") == false);
+    CHECK(payload_nut_word(" OL") == false);
+    CHECK(payload_nut_word("OL ") == false);
+    CHECK(payload_nut_word("OL  LB") == false);
+    CHECK(payload_nut_word("OL,LB") == false);
+    CHECK(payload_nut_word(NULL) == false);
+}
+
+
 static void
 test_json(void)
 {
@@ -241,6 +261,7 @@ main(void)
     test_ulong();
     test_json();
     test_json_leak();
+    test_nut_word();
     test_online();
 
     printf("%s: %d checks, %d failures\n",

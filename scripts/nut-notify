@@ -2,7 +2,8 @@
 #
 # nut-notify -- NUT NOTIFYCMD: forward a UPS event to MQTT.
 # NUT invokes it as `nut-notify "<message>"` with $NOTIFYTYPE / $UPSNAME set
-# in the environment, and publishes twice:
+# in the environment -- and it refuses to run without them -- and
+# publishes twice:
 #   ups/<ups>/notify/<type>   the message, not retained -- an event
 #   ups/<ups>/state           the type, retained -- the current state
 # See the comments at the foot of this file for why those are separate.
@@ -48,7 +49,14 @@ fi
 # Nothing to publish to without a broker.
 [ -n "$MQTT_HOST" ] || { echo "${0##*/}: no MQTT host configured" >&2; exit 1; }
 
-: "${UPSNAME:=unknown}" "${NOTIFYTYPE:=unknown}"
+# upsmon always sets both. Without them this is not a notification --
+# a test run, most likely -- and a stand-in name would leave a retained
+# state for a UPS that does not exist on every display: once it did,
+# "ups/unknown/state unknown".
+if [ -z "${UPSNAME:-}" ] || [ -z "${NOTIFYTYPE:-}" ]; then
+    echo "${0##*/}: UPSNAME and NOTIFYTYPE unset: not called by upsmon" >&2
+    exit 1
+fi
 
 # Publish once, on the common arguments. A non-empty third argument
 # asks for the message to be retained.

@@ -93,6 +93,17 @@ bool payload_json_string(const char *data, size_t len, const char *key,
 			 char *out, size_t outlen);
 
 /**
+ * Whether a UPS state payload is something NUT could have said.
+ *
+ * The retained `ups/<ups>/state` holds either ups.status -- flags such
+ * as "OL CHRG" or "OB LB" -- or, when upsc could not be asked, the
+ * notification type ("ONLINE", "ONBATT"): uppercase words, one space
+ * apart, every time. Anything else is not from upsmon -- a test run of
+ * nut-notify once left a retained "unknown" -- and is not shown.
+ */
+bool payload_nut_word(const char *text);
+
+/**
  * An availability payload: "online", or anything else.
  *
  * Case insensitive. Whatever is not "online" counts as offline, because

@@ -161,7 +161,9 @@ on_message(struct mosquitto *mosq, void *obj,
 	    if (has_payload(msg) && payload_text(PAYLOAD(msg), type,
 						 sizeof(type))) {
 		LOG("MQTT ups state       : %s", type);
-		if (notify_owns_ups)
+		if (! payload_nut_word(type))
+		    LOG("not a NUT state on %s, ignored", msg->topic);
+		else if (notify_owns_ups)
 		    model_set_ups_event(type);
 	    }
 	    return;
