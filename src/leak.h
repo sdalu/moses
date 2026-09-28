@@ -36,7 +36,7 @@
 
 #define LEAK_FLOW_GAP     90.0     // s: a longer gap ends a flow
 #define LEAK_ISOLATION   180.0     // s: no other litre within this
-#define LEAK_SLOW_CV       0.35    // evenness of a slow run
+#define LEAK_SLOW_CV       0.25    // evenness of a slow run
 #define LEAK_SLOW_MAXGAP  (3 * 3600.0) // s: a longer interval ends a run
 #define LEAK_QUIET_WINDOW (24 * 3600.0) // s: where a quiet stretch is looked for
 #define LEAK_SLOW_MAX     64       // longest run kept
@@ -72,8 +72,10 @@ struct leak {
     double        pend;            // the litre whose isolation is pending
     bool          pend_clustered;
     bool          pend_done;       // already taken into the run
-    double        run[LEAK_SLOW_MAX];
+    double        run[LEAK_SLOW_MAX];  // the latest lone litres of the run
     unsigned      run_len;
+    double        run_first;           // the run's first lone litre
+    unsigned long run_total;           // lone litres in the run, all of them
 
     // quiet
     double        quiet_seen;      // latest time a quiet stretch was seen

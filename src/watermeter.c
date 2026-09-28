@@ -154,7 +154,7 @@ struct watermeter watermeter =  {
 	.interval  = 60,
     },
     .leak = {
-	.cfg   = { .flow = 20 * 60, .slow = 6, .quiet = 2 * 3600 },
+	.cfg   = { .flow = 20 * 60, .slow = 8, .quiet = 2 * 3600 },
 	.lock  = PTHREAD_MUTEX_INITIALIZER,
 	.index = -1,
     },
@@ -482,11 +482,13 @@ leak_from_index(const struct watermeter *w)
     return w->leak.check.health != PULSE_OK;
 }
 
-// Pulses read off the line, at their kernel timestamps (seconds,
-// CLOCK_MONOTONIC). Counted for the check, fed to the rules only when
-// they are the source.
+// Pulses as read off the line, each a litre (docs/hardware.md, *Pulse
+// counting*) at the kernel's own timestamp -- CLOCK_MONOTONIC unless
+// asked otherwise, which this daemon never does. Counted for the
+// check, fed to the rules only when they are the source.
 static void
-leak_feed_pulses(struct watermeter *w, const double *t, int n)
+leak_feed_pulses(struct watermeter *w,
+		 const struct gpio_v2_line_event *ev, int n)
 {
     if (!w->leak.enabled || (n <= 0))
 	return;
@@ -495,7 +497,7 @@ leak_feed_pulses(struct watermeter *w, const double *t, int n)
     if (!leak_from_index(w)) {
 	bool changed = false;
 	for (int i = 0 ; i < n ; i++)
-	    changed |= leak_litres(&w->leak.state, t[i], 1);
+	    changed |= leak_litres(&w->leak.state, ev[i].timestamp_ns / 1e9, 1);
 	if (changed)
 	    leak_publish(w);
     }
@@ -697,7 +699,7 @@ watermeter_parse_config(int argc, char **argv, struct watermeter *w)
 	    printf("  -I, --idle-timeout=SEC           gpio notify if no pulse\n");
 	    printf("      --leak                       leak signatures, defaults below\n");
 	    printf("      --leak-flow=SEC              uninterrupted flow (20min, 0 off)\n");
-	    printf("      --leak-slow=COUNT            evenly spaced lone litres (6, 0 off)\n");
+	    printf("      --leak-slow=COUNT            evenly spaced lone litres (8, 0 off)\n");
 	    printf("      --leak-quiet=SEC             quiet expected per 24h (2h, 0 off)\n");
 	    printf("      --leak-source=auto|index|pulse  litres from (auto)\n");
 	    printf("\n");
@@ -804,15 +806,7 @@ static void * pulse_counting_task(void *parameters) {
 
 	pulse = size / sizeof(struct gpio_v2_line_event);
 
-	// Each pulse is a litre (docs/hardware.md, *Pulse counting*), at
-	// the kernel's own timestamp: CLOCK_MONOTONIC unless asked
-	// otherwise, which this daemon never does.
-	if (watermeter.leak.enabled) {
-	    double at[MAX_EVENTS];
-	    for (int i = 0 ; i < pulse ; i++)
-		at[i] = event[i].timestamp_ns / 1e9;
-	    leak_feed_pulses(&watermeter, at, pulse);
-	}
+	leak_feed_pulses(&watermeter, event, pulse);
 	
     publish:
 	PUT_DATA("watermeter", "pulse=%d", pulse);

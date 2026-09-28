@@ -35,7 +35,7 @@ one daemon's retained `offline` cannot mask the others'.
 ### Leaks
 
 With [`--leak`](programs.md#leak-signatures), `moses_watermeter`
-publishes its leak report on `leak`, retained and QoS 1, at start (so a
+publishes its leak report ([leak.md](leak.md)) on `leak`, retained and QoS 1, at start (so a
 report from before a restart is replaced) and whenever the level, the
 kind or the start of the signature changes:
 

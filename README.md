@@ -37,6 +37,7 @@ Documentation
 | [docs/building.md](docs/building.md)     | Prerequisites, flavours, options, install |
 | [docs/programs.md](docs/programs.md)     | Options, environment, `loop-runner`       |
 | [docs/interfaces.md](docs/interfaces.md) | MQTT, line protocol, D-Bus                |
+| [docs/leak.md](docs/leak.md)             | Leak detection: principle, rules, limits  |
 | [test/README.md](test/README.md)         | The test suite                            |
 | [DESIGN.md](DESIGN.md)                   | Why it is shaped this way                 |
 

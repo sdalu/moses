@@ -61,6 +61,18 @@ is sometimes that the checker is wrong rather than the file.
 - [ ] `make tests WITH_WERROR=yes` -- CI builds this way, and the Pi's
       GCC is stricter than a clang workstation. A new warning is a
       failure here, not a note.
+- [ ] **If this round touched a daemon**, CI's static-analysis build on
+      a Linux host with GCC -- the same flags as its step in
+      `.github/workflows/build.yml`:
+
+          cmake -B build-analyze -DWITH_LOG=1 -DWITH_LINEPROTOCOL=1 \
+                -DWITH_WERROR=1 -DWITH_ANALYZER=1 -DWITH_DBUS=ON
+          cmake --build build-analyze
+
+      `make tests` does not run `-fanalyzer`, so a finding there reaches
+      CI first. It is how an array filled in one function and read in
+      another got past a green gate: the analyzer cannot follow a loop
+      bound across the call, and called the read uninitialised.
 - [ ] `make check` under **both** makes -- **if this round touched the
       Makefile.** GNU make and BSD make, and the claim is that they
       agree.

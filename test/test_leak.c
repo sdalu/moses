@@ -29,7 +29,7 @@ static int checks   = 0;
 	}								\
     } while (0)
 
-static const struct leak_config ALL = { .flow = 20 * 60, .slow = 6,
+static const struct leak_config ALL = { .flow = 20 * 60, .slow = 8,
 					.quiet = 2 * 3600 };
 
 // What a stream did: the worst report seen, and when it first came.
@@ -135,20 +135,36 @@ main(void)
     CHECK(o.level == LEAK_ALERT);
     CHECK(o.kind  == LEAK_SLOW);
     CHECK(o.rate  > 2.7 && o.rate < 3.3);
-    // the sixth litre is known isolated LEAK_ISOLATION after it lands
-    CHECK(o.first >= t[5] + LEAK_ISOLATION && o.first <= t[5] + LEAK_ISOLATION + 30);
+    // the eighth litre is known isolated LEAK_ISOLATION after it lands
+    CHECK(o.first >= t[7] + LEAK_ISOLATION && o.first <= t[7] + LEAK_ISOLATION + 30);
 
-    // ... five of them are not enough
-    o = run(&ALL, t, n, 5, t[4] + 3600);
+    // ... reported once, not once per litre: `since` is the run's start
+    {
+	struct leak l; leak_init(&l, &ALL, 0);
+	unsigned changes = 0; double clock = 0;
+	for (int i = 0 ; i < 10 ; i++) {
+	    double at = 600 + i * 1200.0;
+	    for ( ; clock + 30 < at ; clock += 30) changes += leak_tick(&l, clock + 30);
+	    changes += leak_litres(&l, at, 1); clock = at;
+	}
+	for ( ; clock < 600 + 10 * 1200.0 ; clock += 30) changes += leak_tick(&l, clock + 30);
+	CHECK(changes == 1);
+	CHECK(leak_report(&l)->kind == LEAK_SLOW);
+	CHECK(leak_report(&l)->since == 600);
+	CHECK(leak_report(&l)->litres == 10);
+    }
+
+    // ... seven of them are not enough
+    o = run(&ALL, t, n, 7, t[6] + 3600);
     CHECK(o.level == LEAK_OK);
 
     // ... and a flush in the middle starts the run again
     {
 	unsigned m = 0; double tt[20]; unsigned nn[20];
-	for (int i = 0 ; i < 4 ; i++) { tt[m] = 600 + i * 1200.0; nn[m++] = 1; }
-	tt[m] = 600 + 3 * 1200.0 + 300; nn[m++] = 8;          // a flush
-	for (int i = 4 ; i < 8 ; i++) { tt[m] = 600 + i * 1200.0; nn[m++] = 1; }
-	o = run(&ALL, tt, nn, m, 600 + 9 * 1200.0);
+	for (int i = 0 ; i < 6 ; i++) { tt[m] = 600 + i * 1200.0; nn[m++] = 1; }
+	tt[m] = 600 + 5 * 1200.0 + 300; nn[m++] = 8;          // a flush
+	for (int i = 6 ; i < 12 ; i++) { tt[m] = 600 + i * 1200.0; nn[m++] = 1; }
+	o = run(&ALL, tt, nn, m, 600 + 13 * 1200.0);
 	CHECK(o.level == LEAK_OK);
     }
 
@@ -183,7 +199,7 @@ main(void)
 
     // a rule set to 0 is off
     {
-	struct leak_config c = { .flow = 0, .slow = 6, .quiet = 0 };
+	struct leak_config c = { .flow = 0, .slow = 8, .quiet = 0 };
 	k = 0;
 	for (unsigned i = 0 ; i <= 40 * 60 ; i += 10) { t[k] = i; n[k++] = 1; }
 	o = run(&c, t, n, k, 50 * 60);

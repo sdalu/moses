@@ -142,7 +142,8 @@ Leaks are reported, not acted on
 --------------------------------
 
 `moses_watermeter --leak` looks for three signatures in the litres it
-counts (src/leak.h) and publishes what it finds on `leak`. It does not
+counts ([docs/leak.md](docs/leak.md)) and publishes what it finds on
+`leak`. It does not
 close the valve, and there is no option that makes it: the decision
 belongs to whoever reads the topic. Two of the three signatures are too
 slow to be urgent -- a drip of a few litres an hour, or a day without a

@@ -10,7 +10,8 @@ Raspberry Pi, and an LVGL front panel that shows them.
 - `docs/` — `hardware.md` (parts, wiring, `/boot`), `system.md` (the
   Pi's own set-up), `building.md` (prerequisites, options, flavours),
   `programs.md` (options, environment), `interfaces.md` (MQTT, line
-  protocol, D-Bus)
+  protocol, D-Bus), `leak.md` (the leak rules, their evidence and
+  limits)
 - `test/README.md` — what each test covers, and which target runs it
 - `DESIGN.md` — why it is shaped this way
 - `CHECKLIST.md` — what has to be true before a round here is done

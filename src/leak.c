@@ -5,8 +5,8 @@
  * were set by replaying 2.3 years of one household's meter (1 L, one
  * sample a minute) against the leaks it actually had -- a toilet fill
  * valve that stuck open at 5.6 L/min, and a pipe that dripped 2.6 to
- * 6 L/h for three months. See DESIGN.md, *Leaks are reported, not acted
- * on*.
+ * 6 L/h for three months. The replay and what each setting would have
+ * done are in docs/leak.md, *Where the numbers come from*.
  */
 
 #include <math.h>
@@ -50,7 +50,8 @@ cmp_double(const void *a, const void *b)
 static void
 slow_reset(struct leak *l)
 {
-    l->run_len = 0;
+    l->run_len   = 0;
+    l->run_total = 0;
 }
 
 // An isolated litre at `t` joins the run.
@@ -58,7 +59,10 @@ static void
 slow_append(struct leak *l, double t)
 {
     if ((l->run_len > 0) && (t - l->run[l->run_len - 1] > LEAK_SLOW_MAXGAP))
-	l->run_len = 0;
+	slow_reset(l);
+    if (l->run_total == 0)
+	l->run_first = t;
+    l->run_total++;
 
     if (l->run_len == LEAK_SLOW_MAX) {
 	memmove(l->run, l->run + 1, (LEAK_SLOW_MAX - 1) * sizeof(double));
@@ -114,8 +118,9 @@ evaluate(struct leak *l, double now)
     // slow
     double interval;
     if ((c->slow > 0) && slow_even(l, &interval)) {
-	double since = l->run[l->run_len - c->slow];
-	return set_report(l, LEAK_ALERT, LEAK_SLOW, since, c->slow,
+	// Since the run began and all its litres: fixed while the drip
+	// goes on, so each new litre is not a new report.
+	return set_report(l, LEAK_ALERT, LEAK_SLOW, l->run_first, l->run_total,
 			  3600.0 / interval);
     }
 
