@@ -44,11 +44,57 @@ knob does not affect it.
 | `-B`, `--bias=...`         | `as-is`, `disabled`, `pull-up`, `pull-down`        |
 | `-E`, `--edge=...`         | Counted edge: `rising` (default) or `falling`      |
 | `-I`, `--idle-timeout=SEC` | Publish a `0` pulse if nothing is seen within SEC  |
+| `--leak`                   | Turn the leak signatures on, with the defaults below |
+| `--leak-flow=SEC`          | Water that has not stopped for SEC (default 20min) |
+| `--leak-slow=COUNT`        | COUNT lone litres in a row, evenly spaced (default 6) |
+| `--leak-quiet=SEC`         | Warn if 24 h held no SEC without water (default 2h) |
+| `--leak-source=...`        | Litres from `auto` (default), `index` or `pulse`   |
 
 The M-Bus index and the pulse counter are independent; `-P` turns the
 counter on. For the HRI on the Automation HAT's `IN2`, once rewired as
 [Pulse counting](hardware.md#pulse-counting) says:
 `-P rpi:38 -B disabled -E rising`.
+
+### Leak signatures
+
+Any `--leak*` option turns them on; each `--leak-*` also sets its own
+rule, and `0` turns that one off, so `--leak --leak-quiet=0` is flow and
+slow alone. They read one source at a time, so no litre counts twice,
+and publish on [`leak`](interfaces.md#leaks) -- which says which source
+in `source`. `--leak-source` picks it:
+
+- **`index`** -- the M-Bus index; wants a device.
+- **`pulse`** -- the pulses; wants `-P`.
+- **`auto`** -- the only one configured; with both, the pulses while
+  the index vouches for them and the index otherwise. At each index
+  reading the pulses counted since the one before are set against what
+  the index grew by, over windows of at least three readings that grew
+  and 10 L, with slack for a pulse landing on the other side of a
+  reading (2 plus 10 %). No pulse at all, a count off by more than
+  that, or 10 pulses while the index stands still, and the pulses are
+  *broken*: logged, a message on `error`, a `failure="pulse-check"`
+  line, and the rules move to the index. Two matching windows in a row
+  and they are believed again. A `-P` pin says nothing about the wiring
+  behind it ([Pulse counting](hardware.md#pulse-counting)), so auto
+  starts on the index and moves to the pulses only once they have
+  matched.
+
+The rules:
+
+- **flow** -- no two litres more than 90 s apart for SEC: a toilet whose
+  fill valve does not close, a burst pipe, a tap left running. An alert,
+  over as soon as the water stops.
+- **slow** -- COUNT *lone* litres in a row (nothing else within 3 minutes
+  of each), with intervals whose spread is at most 35 % of their mean: a
+  drip. Any other use starts the count again, so in practice it
+  completes at night. With the default 6 it sees about 1 L/h and up; the
+  alert gives the rate. An alert.
+- **quiet** -- the last 24 hours held no SEC without a litre. A house
+  without a leak has one every night. A warning only, and never in the
+  first 24 hours after a start.
+
+Nothing here closes the valve: see DESIGN.md, *Leaks are reported, not
+acted on*.
 
 
 `moses_breaker`

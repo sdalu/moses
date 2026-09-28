@@ -18,6 +18,7 @@ Relative to `MQTT_TOPIC_PREFIX`:
 | ----------------------- | --------- | ------------------ | ---------------------------------------------------- |
 | `index`                 | publish   | `moses_watermeter` | Meter index in litres, e.g. `213011.000`             |
 | `pulse`                 | publish   | `moses_watermeter` | Pulses counted (`0` heartbeat on idle timeout)       |
+| `leak`                  | publish   | `moses_watermeter` | Retained JSON, with `--leak`: see [Leaks](#leaks)    |
 | `state`                 | publish   | `moses_breaker`    | Valve state, `0` (open) or `1` (closed)              |
 | `state/set`             | subscribe | `moses_breaker`    | Requested state: `0`/`1`, `off`/`on`, `false`/`true` |
 | `sensors`               | publish   | `moses_sensors`    | JSON `{ "temperature", "pressure", "humidity" }`     |
@@ -29,6 +30,38 @@ one daemon's retained `offline` cannot mask the others'.
 `moses_display`, with `--source=mqtt`, subscribes to all of these but
 `error`; it publishes nothing. The UPS topics, `ups/<ups>/…`, are outside the prefix; see
 [system.md](system.md#nut).
+
+
+### Leaks
+
+With [`--leak`](programs.md#leak-signatures), `moses_watermeter`
+publishes its leak report on `leak`, retained and QoS 1, at start (so a
+report from before a restart is replaced) and whenever the level, the
+kind or the start of the signature changes:
+
+~~~json
+{ "level": "alert", "kind": "flow", "since": 1790483260, "litres": 134, "rate": 5.60, "source": "index" }
+~~~
+
+| Field    | Meaning                                                              |
+| -------- | -------------------------------------------------------------------- |
+| `level`  | `ok`, `warn` or `alert`                                              |
+| `kind`   | `none`, `flow`, `slow` or `quiet`                                    |
+| `since`  | Unix time the signature started, `0` when `ok`                       |
+| `litres` | Counted since then (`flow`), or the run's length (`slow`)            |
+| `rate`   | L/min for `flow`, L/h for `slow`, `0` otherwise                      |
+| `source` | Where the litres came from: `index` or `pulse` ([`--leak-source`](programs.md#leak-signatures)) |
+
+Under `--leak-source=auto` a change of source is published too, and
+pulses found not to match the index are reported on `error`:
+
+~~~json
+{ "source": "watermeter", "type": "pulse", "msg": "pulses do not match the index: no pulse for 12 L of index" }
+~~~
+
+It is a report, not a latch: a `flow` goes back to `ok` when the water
+stops, a `slow` when other use breaks the run, so the next night sends
+it again. Closing the valve on it is the consumer's decision.
 
 
 Line protocol output
@@ -43,6 +76,7 @@ watermeter index=213044.000 1790489588441408829
 environment temperature=21.42,pressure=102134,humidity=31.68 1790489588441443042
 breaker state=0 1790489588441447164
 watermeter failure="read" 1790489588441449592
+watermeter leak=2,kind="flow",since=1790483260,litres=134,rate=5.60,source="index" 1790489588441452110
 ~~~
 
 A failure is a reading too: the same measurement, with a quoted
@@ -68,8 +102,8 @@ interface   moses.Actuator        on moses.breaker only
 
 What travels is the [line protocol](#line-protocol-output) above,
 without the trailing newline. "Each kind" is a measurement and its first
-field (`watermeter index=`, `watermeter pulse=`, … and a `failure=` for
-each), so a consumer that starts late gets the last index *and* the
+field (`watermeter index=`, `watermeter pulse=`, `watermeter leak=`, …
+and a `failure=` for each), so a consumer that starts late gets the last index *and* the
 last pulse count. Owning a name is being alive: the bus's
 `NameOwnerChanged` says at once when a daemon goes or comes back.
 

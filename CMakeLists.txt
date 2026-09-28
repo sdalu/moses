@@ -395,11 +395,11 @@ endif()
 # Watermeter -- M-Bus index reading and/or GPIO pulse counting
 #
 if (WITH_WATERMETER)
-    add_executable(moses_watermeter src/watermeter.c)
+    add_executable(moses_watermeter src/watermeter.c src/leak.c)
     if (MBUS_INCLUDE_DIR)
         target_include_directories(moses_watermeter PRIVATE ${MBUS_INCLUDE_DIR})
     endif()
-    target_link_libraries(moses_watermeter PRIVATE moses_gpio ${MBUS_LIBRARY})
+    target_link_libraries(moses_watermeter PRIVATE moses_gpio ${MBUS_LIBRARY} m)
 endif()
 
 #
@@ -427,7 +427,7 @@ endif()
 #
 set(MOSES_SOURCES
     src/common.c src/gpio.c src/dbus_sink.c
-    src/watermeter.c src/breaker.c src/breaker_state.c src/sensors.c
+    src/watermeter.c src/leak.c src/breaker.c src/breaker_state.c src/sensors.c
     src/display.c src/display/backend/sdl.c
     src/display/dashboard.c src/display/model.c
     src/display/backend/rpi-automation-hat-mini.c
@@ -436,7 +436,7 @@ set(MOSES_SOURCES
     src/display/payload.c src/display/ups_estimate.c
     test/test_parsers.c test/test_breaker_state.c test/test_ups_estimate.c
     test/test_payload.c test/test_dashboard.c test/test_lineproto.c
-    test/test_dbus.c)
+    test/test_dbus.c test/test_leak.c)
 
 if (WITH_WERROR)
     set_property(SOURCE ${MOSES_SOURCES} APPEND PROPERTY COMPILE_OPTIONS -Werror)
@@ -469,6 +469,14 @@ if (WITH_TESTS)
     target_include_directories(test_breaker_state PRIVATE src)
     target_link_libraries(test_breaker_state PRIVATE moses_defs)
     add_test(NAME breaker_state COMMAND test_breaker_state)
+
+    # src/leak.c, the leak signatures moses_watermeter reports: pure
+    # logic, so it builds and runs on any machine, synthetic streams and
+    # replays of the real meter alike (test/leak_traces.h).
+    add_executable(test_leak test/test_leak.c src/leak.c)
+    target_include_directories(test_leak PRIVATE src test)
+    target_link_libraries(test_leak PRIVATE moses_defs m)
+    add_test(NAME leak COMMAND test_leak)
 
     # The UPS arithmetic behind moses_display. Deliberately independent of
     # WITH_DISPLAY: src/display/ups_estimate.c pulls in neither LVGL nor

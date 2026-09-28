@@ -22,9 +22,9 @@ Raspberry Pi, and an LVGL front panel that shows them.
 ## Gate
 
 Gate: `make check && make tests-nohw` — `check` is preflight and runs
-none of the project's code; `tests-nohw` is six of the seven tests and
+none of the project's code; `tests-nohw` is seven of the eight tests and
 wants neither Linux, M-Bus nor mosquitto, which makes it the gate on a
-development machine. `make tests` is all seven and needs both. Do not
+development machine. `make tests` is all eight and needs both. Do not
 read a passing `tests-nohw` as a passing suite: it compiles none of the
 three daemons. `CHECKLIST.md` has the rest of what closes a round,
 including when the display owes a build of its own.
@@ -40,7 +40,7 @@ including when the display owes a build of its own.
   `test/README.md` prints what each expands to.
 - **`parsers` is the one test that needs Linux**, because it links
   `moses_gpio` and those parsers speak in GPIO line flags. Everything
-  else builds anywhere, so off Linux run the six, call the daemons
+  else builds anywhere, so off Linux run the seven, call the daemons
   unverified, and say so.
 - **libmbus is built from `3rd/libmbus`, not installed.** Linux is the
   only precondition for the daemons now. `MBUS_LIBRARY` and

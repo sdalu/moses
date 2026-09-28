@@ -4,8 +4,8 @@ What has to be true before a unit of work here is done. Every line is a
 command or a question with a yes or a no at the end of it.
 
 moses is built for **Linux** and worked on somewhere else. `make tests`
-wants `linux/gpio.h`; `make tests-nohw` does not, and is six of the
-seven tests. A round done off the Pi is not closed until
+wants `linux/gpio.h`; `make tests-nohw` does not, and is seven of the
+eight tests. A round done off the Pi is not closed until
 `make tests` has run on a Linux host — CLAUDE.local.md names one.
 
 
@@ -18,9 +18,9 @@ is sometimes that the checker is wrong rather than the file.
       submodules are at their committed commits, the helper scripts pass
       shellcheck. Runs none of the project's code, so it runs anywhere
       and it runs first.
-- [ ] `make tests-nohw` -- the six that need neither Linux, M-Bus nor
+- [ ] `make tests-nohw` -- the seven that need neither Linux, M-Bus nor
       mosquitto. This is the gate on a development machine.
-- [ ] `make tests` -- all seven, on a Linux host. The only
+- [ ] `make tests` -- all eight, on a Linux host. The only
       thing that compiles the three daemons at all, and the only thing
       that runs `parsers`.
 - [ ] `make tests-display` -- **if this round touched the screen**:

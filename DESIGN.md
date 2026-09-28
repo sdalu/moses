@@ -138,6 +138,42 @@ the failure worth having: a house with no water is a fault, a house with
 water and no meter reading is an inconvenience.
 
 
+Leaks are reported, not acted on
+--------------------------------
+
+`moses_watermeter --leak` looks for three signatures in the litres it
+counts (src/leak.h) and publishes what it finds on `leak`. It does not
+close the valve, and there is no option that makes it: the decision
+belongs to whoever reads the topic. Two of the three signatures are too
+slow to be urgent -- a drip of a few litres an hour, or a day without a
+quiet stretch, does no damage in the hours a person takes to look -- and
+the fast one, water that does not stop, can only be told from legitimate
+use by knowing the house: a garden hose or a bath being filled looks the
+same to a meter. A daemon that shut the water on a guess would fail the
+same way the normally-open valve is there to avoid.
+
+The rules live where the litres are counted because that is the one
+place that sees every litre as it is counted, and that keeps working
+when the broker, the network or the database does not. They read one
+source at a time, never both, so no litre is counted twice. With the
+index and the pulses both there, neither is taken on faith: each index
+reading checks the pulses counted since the last, and the rules use the
+pulses -- which carry every litre's own time -- only while they match,
+and the index otherwise. A pulse pin given with `-P` says nothing about
+whether the line behind it is wired as
+[Pulse counting](docs/hardware.md#pulse-counting) wants, so the check
+starts them as unproven rather than as right, and a line that stops
+counting, or counts double, is found and said out loud instead of
+silently feeding the rules wrong litres. `--leak-source` overrides it
+for the day one of them is known bad. Their thresholds were set by replaying 2.3 years of this
+household's meter against the leaks it actually had: a toilet fill valve
+stuck open at 5.6 L/min, caught at 20 minutes, and a pipe that dripped
+2.6 to 6 L/h for three months, caught on its first night. The quiet
+rule is the weakest -- some busy summer days had no two-hour stretch --
+so it is a warning, never an alert. `test/test_leak.c` replays three of
+those days, so a change that stops catching them fails.
+
+
 One of each, by a lock the kernel drops
 ---------------------------------------
 
@@ -165,8 +201,8 @@ The Linux GPIO half is its own library
 developed on, so everything that needs it lives in `src/gpio.c`, built as
 `moses_gpio` and linked only by the two daemons that drive a pin.
 `src/common.c` -- the MQTT wrapper, the time parsers, `sleep_until()` --
-is portable, so `moses_display` builds against SDL anywhere and six of
-the seven tests build off Linux entirely. `test_parsers` is the exception
+is portable, so `moses_display` builds against SDL anywhere and seven of
+the eight tests build off Linux entirely. `test_parsers` is the exception
 because it links `moses_gpio` on purpose: those parsers speak in GPIO
 line flags.
 

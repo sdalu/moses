@@ -19,6 +19,15 @@
  * Either source may be left unconfigured; only the configured ones are
  * started. Read failures are reported on the `error` topic. All topics
  * are relative to MQTT_TOPIC_PREFIX (see common.c).
+ *
+ * With --leak (or any --leak-*), the litres also go through the leak
+ * signatures of src/leak.c, from one source chosen by --leak-source:
+ * the index, the pulses, or -- auto, the default -- the pulses while
+ * they agree with the index and the index otherwise (leak_from_index()).
+ * The report is published, retained, on the
+ * `leak` topic whenever it changes. Reported only: closing the valve is
+ * someone else's decision (DESIGN.md, *Leaks are reported, not acted
+ * on*).
  */
 
 #ifndef _GNU_SOURCE
@@ -44,6 +53,7 @@
 #include <mbus/mbus.h>
 
 #include "common.h"
+#include "leak.h"
 
 //== Constants =========================================================
 
@@ -89,13 +99,29 @@ struct watermeter_mqtt {          // MQTT
 	char *index;
 	char *error;
 	char *avail;
+	char *leak;
     } topic;
+};
+
+enum leak_source { LEAK_SOURCE_AUTO = 0, LEAK_SOURCE_INDEX, LEAK_SOURCE_PULSE };
+
+struct leak_watch {
+    bool               enabled;
+    enum leak_source   source;
+    struct leak_config cfg;
+    struct leak        state;
+    struct pulse_check check;        // pulses against the index (auto)
+    unsigned long      pulses;       // counted since the last index reading
+    pthread_mutex_t    lock;         // all of the above
+    double             index;        // last index read, < 0 before one
+    double             carry;        // index fraction not yet a litre
 };
 
 struct watermeter {
     struct watermeter_mqtt mqtt;
     struct pulse_counting  pulse_counting;
     struct index_reader    index_reader;
+    struct leak_watch      leak;
     int                    reduced_latency;
 };
 
@@ -111,6 +137,7 @@ struct watermeter watermeter =  {
 	.topic.index = "index",
 	.topic.error = "error",
 	.topic.avail = "availability/watermeter",
+	.topic.leak  = "leak",
     },
     .pulse_counting = {
 	.ctrl.id   = NULL,
@@ -125,6 +152,11 @@ struct watermeter watermeter =  {
 	.baudrate  = 2400,
 	.address   = "1",
 	.interval  = 60,
+    },
+    .leak = {
+	.cfg   = { .flow = 20 * 60, .slow = 6, .quiet = 2 * 3600 },
+	.lock  = PTHREAD_MUTEX_INITIALIZER,
+	.index = -1,
     },
 };
 
@@ -269,12 +301,15 @@ watermeter_mqtt_init(struct watermeter_mqtt *mqtt)
     MQTT_ADJUST_TOPIC(mqtt, index, prefix);
     MQTT_ADJUST_TOPIC(mqtt, error, prefix);
     MQTT_ADJUST_TOPIC(mqtt, avail, prefix);
+    MQTT_ADJUST_TOPIC(mqtt, leak,  prefix);
 
     if (mqtt_enabled(&mqtt->handler)) {
 	LOG("MQTT pulse           : %s", mqtt->topic.pulse);
 	LOG("MQTT index           : %s", mqtt->topic.index);
 	LOG("MQTT error reporting : %s", mqtt->topic.error);
 	LOG("MQTT availability    : %s", mqtt->topic.avail);
+	if (watermeter.leak.enabled)
+	    LOG("MQTT leak            : %s", mqtt->topic.leak);
     }
 
     int rc = mqtt_connect(&mqtt->handler, 0, NULL, mqtt->topic.avail, NULL);
@@ -375,6 +410,165 @@ watermeter_get_index(struct watermeter *w, double *index)
 }
 
 
+
+//== Leak ==============================================================
+
+static double
+monotonic_now(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec + ts.tv_nsec / 1e9;
+}
+
+static bool leak_from_index(const struct watermeter *w);
+
+// Publish the current report: retained on `leak`, and as a line.
+// Called with the lock held.
+static void
+leak_publish(struct watermeter *w)
+{
+    const struct leak_report *r = leak_report(&w->leak.state);
+
+    // `since` is monotonic inside src/leak.c; the world wants a date.
+    long long since = 0;
+    if (r->level != LEAK_OK) {
+	struct timespec rt;
+	clock_gettime(CLOCK_REALTIME, &rt);
+	since = (long long)(rt.tv_sec - (monotonic_now() - r->since));
+    }
+
+    const char *source = leak_from_index(w) ? "index" : "pulse";
+    PUT_DATA("watermeter", "leak=%d,kind=\"%s\",since=%lld,litres=%lu,rate=%.2f,"
+	     "source=\"%s\"", (int)r->level, leak_kind_name(r->kind), since,
+	     r->litres, r->rate, source);
+    MQTT_PUBLISH(&w->mqtt, leak, 1, true,
+		 "{ \"level\": \"%s\", \"kind\": \"%s\", \"since\": %lld, "
+		 "\"litres\": %lu, \"rate\": %.2f, \"source\": \"%s\" }",
+		 leak_level_name(r->level), leak_kind_name(r->kind), since,
+		 r->litres, r->rate, source);
+    LOG("leak                 : %s %s", leak_level_name(r->level),
+	leak_kind_name(r->kind));
+}
+
+static bool
+has_index(const struct watermeter *w)
+{
+    return w->index_reader.device != NULL;
+}
+
+static bool
+has_pulses(const struct watermeter *w)
+{
+    return w->pulse_counting.ctrl.id != NULL;
+}
+
+// Which source the leak rules read, one at a time so no litre counts
+// twice. `index` and `pulse` are what they say. `auto` takes the only
+// one configured, and with both, the pulses while the index vouches for
+// them (struct pulse_check) -- they carry each litre's own time -- and
+// the index until then and whenever they stop agreeing: a -P pin says
+// nothing about the wiring behind it. Called with the lock held.
+static bool
+leak_from_index(const struct watermeter *w)
+{
+    switch (w->leak.source) {
+    case LEAK_SOURCE_INDEX: return true;
+    case LEAK_SOURCE_PULSE: return false;
+    case LEAK_SOURCE_AUTO:  break;
+    }
+    if (!has_pulses(w)) return true;
+    if (!has_index(w))  return false;
+    return w->leak.check.health != PULSE_OK;
+}
+
+// Pulses read off the line, at their kernel timestamps (seconds,
+// CLOCK_MONOTONIC). Counted for the check, fed to the rules only when
+// they are the source.
+static void
+leak_feed_pulses(struct watermeter *w, const double *t, int n)
+{
+    if (!w->leak.enabled || (n <= 0))
+	return;
+    pthread_mutex_lock(&w->leak.lock);
+    w->leak.pulses += n;
+    if (!leak_from_index(w)) {
+	bool changed = false;
+	for (int i = 0 ; i < n ; i++)
+	    changed |= leak_litres(&w->leak.state, t[i], 1);
+	if (changed)
+	    leak_publish(w);
+    }
+    pthread_mutex_unlock(&w->leak.lock);
+}
+
+// The pulses changed health: say so where someone will see it.
+static void
+pulse_health_changed(struct watermeter *w)
+{
+    const struct pulse_check *c = &w->leak.check;
+    if (c->health == PULSE_BROKEN) {
+	LOG("pulses               : broken, %s; leak rules on the index", c->why);
+	PUT_FAIL("watermeter", "pulse-check");
+	MQTT_PUBLISH(&w->mqtt, error, 1, false,
+		     "{ \"source\": \"watermeter\", \"type\": \"pulse\", "
+		     "\"msg\": \"pulses do not match the index: %s\" }", c->why);
+    } else if (c->health == PULSE_OK) {
+	LOG("pulses               : agree with the index (%s); leak rules on the pulses",
+	    c->why);
+    }
+    leak_publish(w);                       // `source` moved
+}
+
+// An index reading. What it grew by, in whole litres, goes to the rules
+// when the index is the source -- decided before the check below, so a
+// switch never drops nor doubles a reading -- and, with both sources
+// configured under auto, to the pulse check. A backwards or implausible
+// step (meter swapped, bad frame) resets the reference rather than
+// counting, and starts the pulse window over.
+static void
+leak_index_reading(struct watermeter *w, double t, double index)
+{
+    struct leak_watch *lw = &w->leak;
+    if (!lw->enabled)
+	return;
+    pthread_mutex_lock(&lw->lock);
+
+    if ((lw->index < 0) || (index < lw->index) || (index - lw->index >= 1000)) {
+	lw->index  = index;
+	lw->carry  = 0;
+	lw->pulses = 0;
+	pthread_mutex_unlock(&lw->lock);
+	return;
+    }
+    lw->carry += index - lw->index;
+    lw->index  = index;
+    unsigned n = (unsigned)lw->carry;
+    lw->carry -= n;
+
+    if (leak_from_index(w) && (n > 0) && leak_litres(&lw->state, t, n))
+	leak_publish(w);
+
+    if ((lw->source == LEAK_SOURCE_AUTO) && has_pulses(w)) {
+	unsigned long p = lw->pulses;
+	lw->pulses = 0;
+	if (pulse_check_reading(&lw->check, n, (unsigned)p))
+	    pulse_health_changed(w);
+    }
+    pthread_mutex_unlock(&lw->lock);
+}
+
+static double
+parse_leak_duration(const char *arg)
+{
+    if (strcmp(arg, "0") == 0)
+	return 0;
+    unsigned long v;
+    if (parse_idle_timeout(arg, &v) < 0)
+	USAGE_DIE("invalid leak duration (0 to disable, or 1s .. 10w)");
+    return (double)v;
+}
+
 //======================================================================
 
 
@@ -398,6 +592,11 @@ watermeter_parse_config(int argc, char **argv, struct watermeter *w)
 	{ "bias",            required_argument, NULL,	'B' },
 	{ "edge",            required_argument, NULL,	'E' },
 	{ "idle-timeout",    required_argument, NULL,	'I' },
+	{ "leak",            no_argument,       NULL,   0x100 },
+	{ "leak-flow",       required_argument, NULL,   0x101 },
+	{ "leak-slow",       required_argument, NULL,   0x102 },
+	{ "leak-quiet",      required_argument, NULL,   0x103 },
+	{ "leak-source",     required_argument, NULL,   0x104 },
 	{ "help",	     no_argument,	NULL,	'h' },
 	{ NULL },
     };
@@ -453,6 +652,35 @@ watermeter_parse_config(int argc, char **argv, struct watermeter *w)
 		USAGE_DIE("invalid idle timeout (1s .. 10w)");
 	    pc->flags.idle_timeout = 1;
 	    break;
+	case 0x100:
+	    w->leak.enabled = true;
+	    break;
+	case 0x101:
+	    w->leak.cfg.flow  = parse_leak_duration(optarg);
+	    w->leak.enabled   = true;
+	    break;
+	case 0x102: {
+	    char *end = NULL;
+	    unsigned long v = strtoul(optarg, &end, 10);
+	    if ((end == optarg) || (*end != '\0') ||
+		((v != 0) && ((v < 3) || (v > LEAK_SLOW_MAX))))
+		USAGE_DIE("invalid leak count (0 to disable, or 3 .. %d)",
+			  LEAK_SLOW_MAX);
+	    w->leak.cfg.slow = (unsigned)v;
+	    w->leak.enabled  = true;
+	    break;
+	}
+	case 0x103:
+	    w->leak.cfg.quiet = parse_leak_duration(optarg);
+	    w->leak.enabled   = true;
+	    break;
+	case 0x104:
+	    if      (strcmp(optarg, "auto")  == 0) w->leak.source = LEAK_SOURCE_AUTO;
+	    else if (strcmp(optarg, "index") == 0) w->leak.source = LEAK_SOURCE_INDEX;
+	    else if (strcmp(optarg, "pulse") == 0) w->leak.source = LEAK_SOURCE_PULSE;
+	    else USAGE_DIE("invalid leak source (auto, index, pulse)");
+	    w->leak.enabled = true;
+	    break;
 	case 'h':
 	    printf("pulse-counting [opts]\n");
 	    printf("  -r, --reduced-latency            try to reduce latency\n");
@@ -467,6 +695,11 @@ watermeter_parse_config(int argc, char **argv, struct watermeter *w)
 	    printf("             pull-up|pull-down\n");
 	    printf("  -E, --edge=rising|falling        gpio edge detection\n");
 	    printf("  -I, --idle-timeout=SEC           gpio notify if no pulse\n");
+	    printf("      --leak                       leak signatures, defaults below\n");
+	    printf("      --leak-flow=SEC              uninterrupted flow (20min, 0 off)\n");
+	    printf("      --leak-slow=COUNT            evenly spaced lone litres (6, 0 off)\n");
+	    printf("      --leak-quiet=SEC             quiet expected per 24h (2h, 0 off)\n");
+	    printf("      --leak-source=auto|index|pulse  litres from (auto)\n");
 	    printf("\n");
 	    exit(0);
 	case 0:
@@ -477,6 +710,15 @@ watermeter_parse_config(int argc, char **argv, struct watermeter *w)
     }
     argc -= optind;
     argv += optind;
+
+    if (w->leak.enabled) {
+	if ((w->leak.source == LEAK_SOURCE_INDEX) && !has_index(w))
+	    USAGE_DIE("--leak-source=index wants an M-Bus device");
+	if ((w->leak.source == LEAK_SOURCE_PULSE) && !has_pulses(w))
+	    USAGE_DIE("--leak-source=pulse wants a pulse pin (-P)");
+	if (!has_index(w) && !has_pulses(w))
+	    USAGE_DIE("--leak wants the index or the pulses");
+    }
 }
 
 
@@ -485,6 +727,7 @@ watermeter_parse_config(int argc, char **argv, struct watermeter *w)
 
 static pthread_t thr_pulse_counting;
 static pthread_t thr_index_reader;
+static pthread_t thr_leak_ticker;
 
 
 __attribute__((noreturn))
@@ -507,6 +750,7 @@ static void * index_reader_task(void *parameters) {
 	} else {
 	    PUT_DATA("watermeter", "index=%0.3f", value);
 	    MQTT_PUBLISH(mqtt, index, 1, false, "%0.3f", value);
+	    leak_index_reading(&watermeter, monotonic_now(), value);
 	}
 	
 	// Next
@@ -559,10 +803,33 @@ static void * pulse_counting_task(void *parameters) {
 	}
 
 	pulse = size / sizeof(struct gpio_v2_line_event);
+
+	// Each pulse is a litre (docs/hardware.md, *Pulse counting*), at
+	// the kernel's own timestamp: CLOCK_MONOTONIC unless asked
+	// otherwise, which this daemon never does.
+	if (watermeter.leak.enabled) {
+	    double at[MAX_EVENTS];
+	    for (int i = 0 ; i < pulse ; i++)
+		at[i] = event[i].timestamp_ns / 1e9;
+	    leak_feed_pulses(&watermeter, at, pulse);
+	}
 	
     publish:
 	PUT_DATA("watermeter", "pulse=%d", pulse);
 	MQTT_PUBLISH(mqtt, pulse, 2, false, "%u", pulse);
+    }
+}
+
+
+__attribute__((noreturn))
+static void * leak_ticker_task(void *parameters) {
+    struct watermeter *w = parameters;
+    while (1) {
+	sleep(30);
+	pthread_mutex_lock(&w->leak.lock);
+	if (leak_tick(&w->leak.state, monotonic_now()))
+	    leak_publish(w);
+	pthread_mutex_unlock(&w->leak.lock);
     }
 }
 
@@ -598,7 +865,27 @@ main(int argc, char **argv)
     if (watermeter.reduced_latency)
 	reduced_latency();
 
+    // Leak signatures: start clean, and say so -- the topic is
+    // retained, and a report from before a restart is not evidence now.
+    if (watermeter.leak.enabled) {
+	struct leak_config *c = &watermeter.leak.cfg;
+	static const char *const choice[] = { "auto", "index", "pulse" };
+	pulse_check_init(&watermeter.leak.check);
+	LOG("Leak rules           : flow %.0fs, slow %u, quiet %.0fs",
+	    c->flow, c->slow, c->quiet);
+	LOG("Leak source          : %s, %s for now", choice[watermeter.leak.source],
+	    leak_from_index(&watermeter) ? "index" : "pulses");
+	(void)choice;                      // LOG may be compiled out
+	leak_init(&watermeter.leak.state, c, monotonic_now());
+	pthread_mutex_lock(&watermeter.leak.lock);
+	leak_publish(&watermeter);
+	pthread_mutex_unlock(&watermeter.leak.lock);
+    }
+
     // Starting threads
+    if (watermeter.leak.enabled)
+	pthread_create(&thr_leak_ticker, NULL,
+		       leak_ticker_task, &watermeter);
     if (watermeter.pulse_counting.ctrl.id)
 	pthread_create(&thr_pulse_counting, NULL,
 		       pulse_counting_task, &watermeter.pulse_counting);

@@ -24,7 +24,7 @@ make    -C build
 ctest --test-dir build --output-on-failure
 ~~~
 
-`WITH_TESTS` alone registers five of the seven: `dbus` also wants
+`WITH_TESTS` alone registers six of the eight: `dbus` also wants
 `WITH_DBUS`, and `dashboard` wants `WITH_DISPLAY_TESTS`. Every flavour
 that produces readings has `WITH_DBUS` on, so `make tests` gets the
 sixth without being told.
@@ -32,6 +32,7 @@ sixth without being told.
 | Test            | Covers                                                  |
 |-----------------|---------------------------------------------------------|
 | `parsers`       | the nine option parsers: the M-Bus baudrate and the period and timeout spellings in `src/common.c`, and the `chip:pin`, edge, bias, mode and active-level words in `src/gpio.c` — which is why this one test needs Linux |
+| `leak`          | `src/leak.c`, the leak signatures behind `--leak`: each rule's edges on synthetic streams (a flow a minute short, a drip broken by a flush, irregular lone litres, a night that is quiet enough), and replays of the real meter (`test/leak_traces.h`) -- the pipe leak's first night, the toilet stuck at 5.6 L/min, an ordinary day -- so the thresholds keep catching what they were set on; and the pulse check behind `--leak-source=auto`: believed after a matching window, broken on no pulse, half the pulses or pulses with no water, believed again only after two matching windows |
 | `breaker_state` | `breaker_parse_state()`, the valve command vocabulary — also what `moses_display` reads the `state` topic with, so the two cannot disagree |
 | `ups_estimate`  | `ups_on_battery()` and `ups_runtime()`: which `ups.status` flags mean on-battery, and the remaining-time division, including every way its inputs can fail to add up |
 | `payload`       | `src/display/payload.c`: what `moses_display` makes of a published payload — the index, the pulse count, the sensors JSON and an availability |
@@ -42,7 +43,7 @@ sixth without being told.
 All but `parsers` need neither mosquitto nor M-Bus nor anything
 Linux-only, so they run on a development machine too — `dbus` wanting
 only libdbus and `dbus-run-session`, which come with any desktop.
-`make tests-nohw` is those six:
+`make tests-nohw` is those seven:
 
 ~~~sh
 make tests-nohw
@@ -58,7 +59,7 @@ ctest --test-dir build --output-on-failure
 ~~~
 
 Leaving `-DWITH_DBUS=ON` out of that is the quiet way to get five: the
-`dbus` test is simply never built, and `ctest` reports 5/5 green with no
+`dbus` test is simply never built, and `ctest` reports 6/6 green with no
 sign that the bus went untested.
 
 

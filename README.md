@@ -10,7 +10,7 @@ into a proprietary cloud.
 
 | Program            | Role                                                       |
 | ------------------ | ---------------------------------------------------------- |
-| `moses_watermeter` | Read the water meter (M-Bus index, GPIO pulses)            |
+| `moses_watermeter` | Read the water meter (M-Bus index, GPIO pulses), spot leaks |
 | `moses_breaker`    | Open/close the solenoid valve through a relay              |
 | `moses_sensors`    | Read the optional BME280 (temperature, pressure, humidity) |
 | `moses_display`    | Show the installation on the HAT's LCD (optional)          |
@@ -48,6 +48,7 @@ How it fits together
                     +----------------------+
    M-Bus ---------> |                      | --> <prefix>/index
    pulse (GPIO) --> |  moses_watermeter    | --> <prefix>/pulse
+                    |                      | --> <prefix>/leak (--leak)
                     +----------------------+ --> <prefix>/error
                                              --> <prefix>/availability/watermeter
 
