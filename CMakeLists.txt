@@ -618,6 +618,7 @@ if (WITH_DISPLAY)
         src/display.c
         src/breaker_state.c		# the `state` payload vocabulary, shared
         src/display/dashboard.c
+        src/display/icons.c		# the leak banner's icons, generated
         src/display/model.c
         src/display/payload.c		# the numbers and text, for either source
         src/display/source-nut.c
@@ -690,6 +691,7 @@ if (WITH_DISPLAY_TESTS)
     add_executable(test_dashboard
         test/test_dashboard.c
         src/display/dashboard.c
+        src/display/icons.c
         src/display/model.c
         src/display/ups_estimate.c)
     target_include_directories(test_dashboard PRIVATE

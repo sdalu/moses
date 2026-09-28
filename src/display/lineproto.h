@@ -24,6 +24,7 @@
  *     environment temperature=21.42,pressure=102134,humidity=45.30 1790...
  *     breaker state=1 1790489588441408829
  *     watermeter failure="read" 1790489588441449592
+ *     watermeter leak=2,kind="flow",since=1790483260,litres=134,rate=5.60,source="index" 1790...
  *
  * The measurement names are the ones the producers pass to PUT_DATA:
  * "watermeter" (src/watermeter.c), "environment" (src/sensors.c) and
@@ -85,6 +86,7 @@ enum lineproto_kind {
     LINEPROTO_TEMPERATURE,	/**< environment temperature=, Celsius	*/
     LINEPROTO_VALVE,		/**< breaker state=, closed or not	*/
     LINEPROTO_FAILURE,		/**< failure="...", a producer said so	*/
+    LINEPROTO_LEAK,		/**< watermeter leak=, with the fields after it */
 };
 
 
@@ -110,6 +112,12 @@ struct lineproto_reading {
 	unsigned long count;	/**< LINEPROTO_PULSE			*/
 	double	      celsius;	/**< LINEPROTO_TEMPERATURE		*/
 	bool	      closed;	/**< LINEPROTO_VALVE: water shut	*/
+	struct {		/**< LINEPROTO_LEAK			*/
+	    unsigned  level;	/**< 0 ok, 1 warn, 2 alert		*/
+	    char      kind[8];	/**< "none", "flow", "slow", "quiet"	*/
+	    time_t    since;
+	    double    rate;
+	} leak;
     };
 
     /** When the producer took it, in seconds since the epoch; 0 when

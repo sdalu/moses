@@ -162,6 +162,10 @@ replaced -- and whenever the level, the kind or the start changes:
 
 and the same as a `watermeter leak=` line on stdout and on the system
 bus. The fields are in [interfaces.md](interfaces.md#leaks).
+`moses_display` puts it on the panel as a banner in the header's place
+-- an icon, `Flow 5.6 L/min`, and `42 min` at the right -- red for an
+alert, amber for the quiet warning; every screen is in
+[alert.md](alert.md).
 
 **Nothing closes the valve.** Whether a report is worth shutting the
 water for is for whoever reads it: slow and quiet are too slow to do

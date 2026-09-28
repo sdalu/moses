@@ -339,6 +339,73 @@ main(int argc, char **argv)
 	shot("dashboard-ups-event.png", &m);
     }
 
+    /* Every alert the panel can show, as docs/alert.md shows them: each
+     * state of the leak report, in a normal, a freezing and a far too
+     * hot room, with the watermeter online and gone. docs/alert.md
+     * embeds these very files, so it cannot show a screen the code no
+     * longer draws. */
+    {
+	static const struct {
+	    const char           *name;
+	    enum model_leak_level level;
+	    enum model_leak_kind  kind;
+	    time_t                ago;		/* since the signature began */
+	    double                rate;
+	} kinds[] = {
+	    { "none",  MODEL_LEAK_OK,    MODEL_LEAK_NONE,  0,                   0   },
+	    { "flow",  MODEL_LEAK_ALERT, MODEL_LEAK_FLOW,  42 * 60,             5.6 },
+	    { "drip",  MODEL_LEAK_ALERT, MODEL_LEAK_SLOW,  5 * 3600 + 12 * 60,  3.3 },
+	    { "quiet", MODEL_LEAK_WARN,  MODEL_LEAK_QUIET, 26 * 3600,           0   },
+	};
+	static const struct { const char *name; double celsius; } rooms[] = {
+	    { "normal", 21.4 }, { "freezing", 1.5 }, { "hot", 61.0 },
+	};
+
+	for (size_t k = 0 ; k < sizeof(kinds) / sizeof(kinds[0]) ; k++)
+	for (size_t r = 0 ; r < sizeof(rooms) / sizeof(rooms[0]) ; r++)
+	for (int gone = 0 ; gone <= 1 ; gone++) {
+	    struct model m = nominal();
+	    char         name[64];
+
+	    m.temperature.celsius = rooms[r].celsius;
+	    if (kinds[k].kind == MODEL_LEAK_FLOW) {	/* water moving */
+		m.pulse.known      = true;
+		m.pulse.count      = 6;
+		m.pulse.at         = NOW - 2;
+		m.pulse.latched_at = NOW - 2;
+	    }
+	    if (kinds[k].kind != MODEL_LEAK_NONE) {
+		m.leak.known = true;
+		m.leak.level = kinds[k].level;
+		m.leak.kind  = kinds[k].kind;
+		m.leak.since = NOW - kinds[k].ago;
+		m.leak.rate  = kinds[k].rate;
+		m.leak.at    = NOW - 60;
+	    }
+	    if (gone) {				/* its last will is out */
+		m.avail[MODEL_WATERMETER] = MODEL_AVAIL_OFFLINE;
+		m.index.at    = NOW - 4000;
+		m.pulse.latched_at = 0;
+	    }
+	    snprintf(name, sizeof(name), "dashboard-alert-%s-%s-%s.png",
+		     kinds[k].name, rooms[r].name, gone ? "offline" : "online");
+	    shot(name, &m);
+	}
+    }
+
+    /* The widest the banner gets: a fast drip, a long run. If it
+     * overflows, it overflows here. */
+    {
+	struct model m = nominal();
+	m.leak.known = true;
+	m.leak.level = MODEL_LEAK_ALERT;
+	m.leak.kind  = MODEL_LEAK_SLOW;
+	m.leak.since = NOW - (11 * 3600 + 45 * 60);
+	m.leak.rate  = 14.8;
+	m.leak.at    = NOW - 600;
+	shot("dashboard-alert-drip-widest.png", &m);
+    }
+
     /* A cold start: connected to nothing, knowing nothing. Every figure
      * is a dash, the UPS included -- it has not been heard from, which
      * is not the same as there being none. */

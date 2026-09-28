@@ -56,6 +56,7 @@ enum sub {
     SUB_PULSE,
     SUB_STATE,
     SUB_SENSORS,
+    SUB_LEAK,
     SUB_AVAIL_WATERMETER,
     SUB_AVAIL_BREAKER,
     SUB_AVAIL_SENSORS,
@@ -67,6 +68,7 @@ static const char *const sub_suffix[SUB_COUNT] = {
     [SUB_PULSE]            = "pulse",
     [SUB_STATE]            = "state",
     [SUB_SENSORS]          = "sensors",
+    [SUB_LEAK]             = "leak",
     [SUB_AVAIL_WATERMETER] = "availability/watermeter",
     [SUB_AVAIL_BREAKER]    = "availability/breaker",
     [SUB_AVAIL_SENSORS]    = "availability/sensors",
@@ -200,6 +202,26 @@ on_message(struct mosquitto *mosq, void *obj,
 	    if (has_payload(msg) &&
 		payload_json_number(PAYLOAD(msg), "temperature", &celsius))
 		model_set_temperature(celsius);
+	    else
+		LOG("garbage content for MQTT topic %s", msg->topic);
+	    return;
+	}
+	case SUB_LEAK: {
+	    /* docs/interfaces.md, *Leaks*: the level and kind as words,
+	     * `since` and `rate` as numbers. All four or nothing -- half a
+	     * report would put a banner up that says the wrong thing. */
+	    char   level[8], kind[8];
+	    double since, rate;
+	    int    lv = -1, kd = -1;
+	    if (has_payload(msg) &&
+		payload_json_string(PAYLOAD(msg), "level", level, sizeof(level)) &&
+		payload_json_string(PAYLOAD(msg), "kind",  kind,  sizeof(kind))  &&
+		payload_json_number(PAYLOAD(msg), "since", &since) &&
+		payload_json_number(PAYLOAD(msg), "rate",  &rate)  &&
+		((lv = model_leak_level_parse(level)) >= 0) &&
+		((kd = model_leak_kind_parse(kind))   >= 0))
+		model_set_leak((enum model_leak_level)lv,
+			       (enum model_leak_kind)kd, (time_t)since, rate);
 	    else
 		LOG("garbage content for MQTT topic %s", msg->topic);
 	    return;

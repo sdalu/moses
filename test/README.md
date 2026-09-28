@@ -35,10 +35,10 @@ sixth without being told.
 | `leak`          | `src/leak.c`, the leak signatures behind `--leak`: each rule's edges on synthetic streams (a flow a minute short, a drip broken by a flush, irregular lone litres, a night that is quiet enough), and replays of the real meter (`test/leak_traces.h`) -- the pipe leak's first night, the toilet stuck at 5.6 L/min, an ordinary day -- so the thresholds keep catching what they were set on; and the pulse check behind `--leak-source=auto`: believed after a matching window, broken on no pulse, half the pulses or pulses with no water, believed again only after two matching windows |
 | `breaker_state` | `breaker_parse_state()`, the valve command vocabulary — also what `moses_display` reads the `state` topic with, so the two cannot disagree |
 | `ups_estimate`  | `ups_on_battery()` and `ups_runtime()`: which `ups.status` flags mean on-battery, and the remaining-time division, including every way its inputs can fail to add up |
-| `payload`       | `src/display/payload.c`: what `moses_display` makes of a published payload — the index, the pulse count, the sensors JSON and an availability |
-| `lineproto`     | `src/display/lineproto.c`: what `moses_display` makes of a line off the bus — the wire exactly as the daemons emit it, its timestamp, and every malformed line that must yield nothing rather than half a figure |
+| `payload`       | `src/display/payload.c`: what `moses_display` makes of a published payload — the index, the pulse count, the sensors JSON, the leak report's words and numbers, and an availability |
+| `lineproto`     | `src/display/lineproto.c`: what `moses_display` makes of a line off the bus — the wire exactly as the daemons emit it, its timestamp, the leak report's several fields folded into one reading, and every malformed line that must yield nothing rather than half a figure |
 | `dbus`          | the bus itself, under `WITH_DBUS`: a daemon's sink and the display's source through a `dbus-daemon` that `dbus-run-session` starts for it — a consumer that starts late is filled in, a live line arrives, a producer that leaves is seen to leave, one that comes back is picked up, one never seen is never called gone, and `SetState` is applied on the breaker, refused with the right error otherwise |
-| `dashboard`     | the screen itself, rendered to PNG — see below           |
+| `dashboard`     | the screen itself, rendered to PNG — see below; with every alert screen, which [docs/alert.md](../docs/alert.md) shows |
 
 All but `parsers` need neither mosquitto nor M-Bus nor anything
 Linux-only, so they run on a development machine too — `dbus` wanting

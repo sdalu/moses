@@ -20,7 +20,7 @@
  * LCD renders perfectly; and it lets a colour mean something, instead
  * of being merely the part that is not ink.
  *
- * Colour carries the state, and the rule is three-valued:
+ * Colour carries the state, and the rule has four values:
  *
  *   its own colour   a current reading -- the meter cyan, a valve that
  *                    is letting water through green, the rest plain
@@ -28,6 +28,9 @@
  *                    that what is shown may no longer be true
  *   red              known and bad: the valve shut, the room at
  *                    freezing, the UPS on battery
+ *   amber            suspect: something is probably wrong and nobody
+ *                    can say so yet -- the leak report's "never quiet"
+ *                    warning, and nothing else so far
  *
  * Keeping dim and red apart is the whole discipline of the screen. Not
  * knowing whether the valve is open is a different thing from knowing
@@ -57,6 +60,25 @@
  * dirty label is a fresh frame pushed down the SPI bus. Left to itself
  * this screen would refresh forever to show the same six values.
  *
+ * A leak report (docs/leak.md) takes the header's place while it is
+ * not ok -- the kind and rate on the left, how long on the right:
+ *
+ *   +--------------------------------------+
+ *   | ~ Flow 5.6 L/min             42 min  |  red: a flow or a drip
+ *   |--------------------------------------|  amber: never quiet
+ *   | (o)  213025 L                  [+6]  |
+ *   ...
+ *
+ * The header is the row to give up: the meter, the flow and the valve
+ * are exactly what a leak makes worth reading, and the name and the
+ * clock can wait. The temperature cannot, when it is red too: it gets a
+ * red box of its own at the banner's right, behind a snowflake (a flame
+ * for a room far too hot), and the duration gives it the room -- the
+ * banner reads as split in two, the leak in its colour and the room in
+ * red. The same red box holds it in the header when there is no leak.
+ * A report is retained and only published on a change, so it is not
+ * aged like a reading; it goes grey when the watermeter is gone.
+ *
  * test/test_dashboard.c renders all of it to PNGs under test/ref-imgs/
  * and fails when it changes, so the picture above is checked rather
  * than merely described.
@@ -72,6 +94,17 @@
 #include "dashboard.h"
 #include "model.h"
 #include "ups_estimate.h"
+
+
+/* The leak banner's icons (src/display/icons.c): Font Awesome glyphs at
+ * 10 px over Montserrat 10, so an icon and its words share one label
+ * and one baseline. UTF-8 of the code points listed there. */
+LV_FONT_DECLARE(moses_icons_10)
+#define ICON_FLOOD	"\xEE\x94\x8E"	/* U+E50E house-flood-water	*/
+#define ICON_DRIP	"\xEE\x80\x86"	/* U+E006 faucet-drip		*/
+#define ICON_QUIET	"\xEE\x80\x85"	/* U+E005 faucet		*/
+#define ICON_COLD	"\xEF\x8B\x9C"	/* U+F2DC snowflake		*/
+#define ICON_HOT	"\xEF\x81\xAD"	/* U+F06D fire			*/
 
 
 /* Where a figure turns red.
@@ -106,6 +139,7 @@
 #define C_WATER		0x3FC7F4	/* the meter, and the flow badge */
 #define C_GOOD		0x4ADE80	/* a valve letting water through */
 #define C_ALARM		0xF87171	/* known and bad		*/
+#define C_WARN		0xF5A524	/* suspect: a warning, not an alarm */
 
 /* Gaps and shapes. */
 #define ROW_GAP		4	/* between the two chips		*/
@@ -132,6 +166,7 @@ enum ink {
     INK_DIM = 0,	/**< unknown, or too old to trust		*/
     INK_NORMAL,		/**< a current reading, in its own colour	*/
     INK_ALARM,		/**< current, and bad				*/
+    INK_ON_ALARM,	/**< current and bad, dark on its own red box	*/
 };
 
 
@@ -159,8 +194,28 @@ static struct {
     struct field  ups_label;	/**< "UPS", plus the status flags	*/
 
     lv_obj_t     *flow_badge;	/**< shown only while water is moving	*/
+
+    lv_obj_t     *header;	/**< name, temperature, clock		*/
+    lv_obj_t     *temp_box;	/**< red around the temperature, when bad */
+    bool          temp_boxed;
+    lv_obj_t     *banner;	/**< a leak report, in the header's place */
+    lv_obj_t     *banner_box;	/**< the leak, in its colour		*/
+    lv_obj_t     *banner_temp;	/**< the temperature, when bad, in red	*/
+    struct field  banner_tval;
+    struct field  banner_what;	/**< "! Flow 5.6 L/min"			*/
+    struct field  banner_long;	/**< "42 min"				*/
+    int           banner_look;	/**< enum banner_look, -1 before any	*/
+
     unsigned long stale_after;
 } w;
+
+
+/* How the banner is painted. */
+enum banner_look {
+    BANNER_ALERT = 0,		/**< red ground, dark text: known and bad */
+    BANNER_WARN,		/**< amber ground, dark text: a suspicion */
+    BANNER_STALE,		/**< the chip colour, dim text: the producer is gone */
+};
 
 
 //== Ink ===============================================================
@@ -170,6 +225,7 @@ ink_color(const struct field *f, enum ink ink)
 {
     switch (ink) {
     case INK_ALARM:  return lv_color_hex(C_ALARM);
+    case INK_ON_ALARM: return lv_color_hex(C_BACKGROUND);
     case INK_NORMAL: return f->normal;
     default:         return lv_color_hex(C_DIM);
     }
@@ -246,6 +302,28 @@ format_duration(char *out, size_t len, double seconds)
 	snprintf(out, len, "%luh%02lu", h, m);
     else
 	snprintf(out, len, "%lum", m);
+}
+
+
+/*
+ * How long a leak has gone on, spelt out for the banner: "42 min",
+ * "5 h 12", "26 h". Longer than format_duration()'s "5h12" because the
+ * banner is read from across a room, by someone who did not know it
+ * was there, and has the width for it.
+ */
+static void
+format_leak_duration(char *out, size_t len, time_t seconds)
+{
+    unsigned long t = (seconds > 0) ? (unsigned long)seconds : 0;
+    unsigned long h = t / 3600;
+    unsigned long m = (t % 3600) / 60;
+
+    if (h >= 24)
+	snprintf(out, len, "%lu h", h);
+    else if (h > 0)
+	snprintf(out, len, "%lu h %02lu", h, m);
+    else
+	snprintf(out, len, "%lu min", m);
 }
 
 
@@ -399,25 +477,64 @@ show_valve(const struct model *m, time_t now)
 }
 
 
+/*
+ * A red box around a figure, or none.
+ *
+ * The temperature is the one figure that can be red in the header and
+ * beside a leak banner, and the banner has colours of its own -- amber
+ * for a suspicion, grey for a report nobody vouches for any more. A red
+ * word on amber or grey reads as neither, so an alarming temperature
+ * gets its own red box, with its icon, wherever it is: the header, or
+ * the banner's right-hand end, which then looks split in two.
+ */
+static void
+red_box(lv_obj_t *b, bool on)
+{
+    lv_obj_set_style_bg_opa(b, on ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_pad_hor(b, on ? 3 : 0, LV_PART_MAIN);
+}
+
+
+/* The temperature when it is at an end of its range, with its icon:
+ * a snowflake at freezing, a flame far too hot. False otherwise. */
+static bool
+temp_alarm(const struct model *m, time_t now, char *out, size_t len)
+{
+    if (! m->temperature.known ||
+	! current(true, m->temperature.at, m->avail[MODEL_SENSORS], now))
+	return false;
+
+    double c = m->temperature.celsius;
+    if ((c > TEMP_COLD) && (c < TEMP_HOT))
+	return false;
+
+    snprintf(out, len, "%s %.1f°C", (c <= TEMP_COLD) ? ICON_COLD : ICON_HOT, c);
+    return true;
+}
+
+
 static void
 show_temp(const struct model *m, time_t now)
 {
     char buf[FIELD_MAX];
+    bool boxed = temp_alarm(m, now, buf, sizeof(buf));
 
-    if (! m->temperature.known) {
+    if (boxed) {
+	set(&w.temp, INK_ON_ALARM, buf);
+    } else if (! m->temperature.known) {
 	set(&w.temp, INK_DIM, NOTHING);
-	return;
+    } else {
+	snprintf(buf, sizeof(buf), "%.1f°C", m->temperature.celsius);
+	set(&w.temp,
+	    current(true, m->temperature.at, m->avail[MODEL_SENSORS], now)
+		? INK_NORMAL : INK_DIM,
+	    buf);
     }
 
-    double c = m->temperature.celsius;
-    snprintf(buf, sizeof(buf), "%.1f°C", c);
-
-    if (! current(true, m->temperature.at, m->avail[MODEL_SENSORS], now))
-	set(&w.temp, INK_DIM, buf);
-    else
-	set(&w.temp,
-	    ((c <= TEMP_COLD) || (c >= TEMP_HOT)) ? INK_ALARM : INK_NORMAL,
-	    buf);
+    if (boxed != w.temp_boxed) {
+	w.temp_boxed = boxed;
+	red_box(w.temp_box, boxed);
+    }
 }
 
 
@@ -516,6 +633,79 @@ show_ups(const struct model *m)
 	set(&w.ups, ink, ups_on_battery(m->ups.status) ? "on batt" : "on line");
     else
 	set(&w.ups, ink, buf);
+}
+
+
+/*
+ * The leak banner, or the header when there is nothing to say.
+ *
+ * Painted only when its look changes, and its two texts only when they
+ * change -- the duration moves once a minute, which is then the one
+ * redraw a standing leak costs.
+ */
+static void
+banner_paint(enum banner_look look)
+{
+    if (w.banner_look == (int)look)
+	return;
+    w.banner_look = (int)look;
+
+    uint32_t ground = (look == BANNER_ALERT) ? C_ALARM
+		    : (look == BANNER_WARN)  ? C_WARN
+		    :                          C_SURFACE;
+    uint32_t ink    = (look == BANNER_STALE) ? C_DIM : C_BACKGROUND;
+
+    lv_obj_set_style_bg_color(w.banner_box, lv_color_hex(ground), LV_PART_MAIN);
+    w.banner_what.normal = lv_color_hex(ink);
+    w.banner_long.normal = lv_color_hex(ink);
+    lv_obj_set_style_text_color(w.banner_what.label, lv_color_hex(ink), LV_PART_MAIN);
+    lv_obj_set_style_text_color(w.banner_long.label, lv_color_hex(ink), LV_PART_MAIN);
+}
+
+static void
+show_leak(const struct model *m, time_t now)
+{
+    char what[FIELD_MAX], howlong[FIELD_MAX];
+
+    bool shown = m->leak.known && (m->leak.level != MODEL_LEAK_OK) &&
+		 (m->leak.kind != MODEL_LEAK_NONE);
+    lv_obj_set_hidden(w.header, shown);
+    lv_obj_set_hidden(w.banner, ! shown);
+    if (! shown)
+	return;
+
+    switch (m->leak.kind) {
+    case MODEL_LEAK_FLOW:
+	snprintf(what, sizeof(what), ICON_FLOOD " Flow %.1f L/min", m->leak.rate);
+	break;
+    case MODEL_LEAK_SLOW:
+	snprintf(what, sizeof(what), ICON_DRIP " Drip %.1f L/h", m->leak.rate);
+	break;
+    default:
+	snprintf(what, sizeof(what), "%s", ICON_QUIET " Never quiet");
+	break;
+    }
+
+    /* A freezing or burning room is red in the header this replaces,
+     * and matters as much: it gets a red box of its own at the right,
+     * whatever colour the leak is, and the duration gives it the room
+     * (there are 156 pixels for the two). */
+    char temp[FIELD_MAX];
+    bool hot_or_cold = temp_alarm(m, now, temp, sizeof(temp));
+    lv_obj_set_hidden(w.banner_temp, ! hot_or_cold);
+    if (hot_or_cold)
+	set(&w.banner_tval, INK_ON_ALARM, temp);
+
+    if ((! hot_or_cold) && (m->leak.since > 0) && (m->leak.since <= now))
+	format_leak_duration(howlong, sizeof(howlong), now - m->leak.since);
+    else
+	howlong[0] = '\0';
+
+    banner_paint((m->avail[MODEL_WATERMETER] == MODEL_AVAIL_OFFLINE) ? BANNER_STALE
+		 : (m->leak.level == MODEL_LEAK_ALERT)                ? BANNER_ALERT
+		 :                                                       BANNER_WARN);
+    set(&w.banner_what, INK_NORMAL, what);
+    set(&w.banner_long, INK_NORMAL, howlong);
 }
 
 
@@ -689,6 +879,8 @@ report_layout(lv_obj_t *screen)
 
     /* Each row as the lines it spans, top to bottom. */
     for (uint32_t i = 0 ; i < rows ; i++) {
+	if (lv_obj_is_hidden(lv_obj_get_child(screen, i)))
+	    continue;			/* the banner, until a leak */
 	lv_obj_get_coords(lv_obj_get_child(screen, i), &row_area);
 	if (len < sizeof(spans))
 	    len += snprintf(spans + len, sizeof(spans) - len, "%s%d..%d",
@@ -746,9 +938,46 @@ dashboard_create(lv_color_t accent, unsigned long stale_after,
      * another. It names what is being watched, not the machine doing
      * the watching -- see device_name() in src/display.c. */
     lv_obj_t *header = row(screen);
+    w.header = header;
     text(header, small, C_DIM, (device != NULL) ? device : "?");
-    field_init(&w.temp,  header, small, C_TEXT, NOTHING);
+    /* The temperature sits in a box that is invisible until the room is
+     * at an end of its range (red_box()). Its font is the icon font, for
+     * the snowflake; everything else in it falls back to Montserrat 10,
+     * so an ordinary reading is drawn exactly as the small font draws it. */
+    w.temp_boxed = false;		/* a fresh box; see red_box() */
+    w.temp_box = box(header);
+    lv_obj_set_size(w.temp_box, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(w.temp_box, lv_color_hex(C_ALARM), LV_PART_MAIN);
+    lv_obj_set_style_radius(w.temp_box, 2, LV_PART_MAIN);
+    red_box(w.temp_box, false);
+    field_init(&w.temp,  w.temp_box, &moses_icons_10, C_TEXT, NOTHING);
     field_init(&w.clock, header, small, C_TEXT, "--:--");
+
+    /* The leak banner, hidden in the header's place until a report is
+     * not ok (show_leak()). Same font and height as the header, so the
+     * rows below do not move when it comes and goes. */
+    w.banner = row(screen);
+    lv_obj_set_style_pad_column(w.banner, 3, LV_PART_MAIN);
+
+    w.banner_box = row(w.banner);	/* the leak: kind, rate, how long */
+    lv_obj_set_width(w.banner_box, LV_SIZE_CONTENT);
+    lv_obj_set_flex_grow(w.banner_box, 1);
+    lv_obj_set_style_bg_opa(w.banner_box, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(w.banner_box, 2, LV_PART_MAIN);
+    lv_obj_set_style_pad_hor(w.banner_box, 3, LV_PART_MAIN);
+    field_init(&w.banner_what, w.banner_box, &moses_icons_10, C_BACKGROUND, "");
+    field_init(&w.banner_long, w.banner_box, &moses_icons_10, C_BACKGROUND, "");
+
+    w.banner_temp = box(w.banner);	/* the room, when it is bad */
+    lv_obj_set_size(w.banner_temp, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(w.banner_temp, lv_color_hex(C_ALARM), LV_PART_MAIN);
+    lv_obj_set_style_radius(w.banner_temp, 2, LV_PART_MAIN);
+    red_box(w.banner_temp, true);
+    field_init(&w.banner_tval, w.banner_temp, &moses_icons_10, C_BACKGROUND, "");
+    lv_obj_set_hidden(w.banner_temp, true);
+    w.banner_look = -1;
+    banner_paint(BANNER_ALERT);
+    lv_obj_set_hidden(w.banner, true);
 
     hairline(screen);
 
@@ -795,6 +1024,7 @@ dashboard_create(lv_color_t accent, unsigned long stale_after,
 void
 dashboard_update(const struct model *m, time_t now)
 {
+    show_leak(m, now);
     show_clock(now);
     show_temp(m, now);
     show_index(m, now);

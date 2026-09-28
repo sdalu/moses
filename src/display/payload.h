@@ -73,10 +73,24 @@ bool payload_ulong(const char *data, size_t len, unsigned long *val);
  *
  * The limit of that shortcut: it finds the first occurrence of the
  * quoted key anywhere in the object, including inside a string value.
- * The payloads it is pointed at have no string values.
+ * The payloads it is pointed at either have no string values (sensors)
+ * or only a few fixed words that no key is spelled like (leak).
  */
 bool payload_json_number(const char *data, size_t len, const char *key,
 			 double *val);
+
+/**
+ * One string out of a flat JSON object, by key -- the same scan as
+ * payload_json_number(), for the leak report's words ("alert", "flow").
+ *
+ * The value must be a quoted string with no escape in it: the producer
+ * (src/watermeter.c) writes a fixed word there, and a backslash means
+ * the payload came from something else, so it is refused. `out` is
+ * NUL-terminated; a value that does not fit in it is refused too, a
+ * truncated word being a different word.
+ */
+bool payload_json_string(const char *data, size_t len, const char *key,
+			 char *out, size_t outlen);
 
 /**
  * An availability payload: "online", or anything else.

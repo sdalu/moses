@@ -124,6 +124,13 @@ so if it is not the hostname. A flow of `+N` stays up for 30 seconds after a pul
 | its own  | a current reading: the meter cyan, an open valve green            |
 | dim grey | unknown: the daemon is `offline`, or silent for `--stale` seconds |
 | red      | known and bad: the valve shut, the room at freezing, on battery   |
+| amber    | suspect: the leak report's *Never quiet* warning                  |
+
+A [leak report](leak.md) that is not `ok` takes the header's row --
+the kind and rate on the left, how long on the right, red for a flow or
+a drip, amber for *Never quiet* -- and a room at freezing or far too hot
+gets a red box of its own. [alert.md](alert.md) explains the rules and
+shows every screen, from the test suite's own references.
 
 | Option                 | Description                                              |
 | ---------------------- | -------------------------------------------------------- |

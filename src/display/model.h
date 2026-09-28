@@ -68,6 +68,27 @@ enum model_ups_state {
     MODEL_UPS_KNOWN,		/**< a status, with or without figures	*/
 };
 
+/**
+ * The watermeter's leak report (docs/leak.md), as far as the panel is
+ * concerned: how bad, what kind, since when, how fast.
+ *
+ * The same words as the report itself -- src/leak.h's -- because the
+ * panel shows what moses_watermeter concluded and concludes nothing of
+ * its own.
+ */
+enum model_leak_level {
+    MODEL_LEAK_OK = 0,
+    MODEL_LEAK_WARN,
+    MODEL_LEAK_ALERT,
+};
+
+enum model_leak_kind {
+    MODEL_LEAK_NONE = 0,
+    MODEL_LEAK_FLOW,		/**< water that does not stop		*/
+    MODEL_LEAK_SLOW,		/**< a regular drip			*/
+    MODEL_LEAK_QUIET,		/**< a house that never rests		*/
+};
+
 /** What an availability topic last said about a daemon. */
 enum model_avail {
     MODEL_AVAIL_UNKNOWN = 0,	/**< nothing retained, nothing seen	*/
@@ -119,6 +140,15 @@ struct model {
 	time_t	 at;
     } ups;
 
+    struct {				/* moses_watermeter --leak	*/
+	bool	 known;
+	enum model_leak_level level;
+	enum model_leak_kind  kind;
+	time_t	 since;			/**< when the signature began, 0 = none */
+	double	 rate;			/**< L/min (flow), L/h (slow), else 0 */
+	time_t	 at;
+    } leak;
+
     enum model_avail avail[MODEL_PRODUCER_COUNT];
 };
 
@@ -157,6 +187,22 @@ void model_set_valve_at(bool closed, time_t at);
 void model_set_index_at(double litres, time_t at);
 void model_set_pulse_at(unsigned long count, time_t at);
 void model_set_temperature_at(double celsius, time_t at);
+
+/**
+ * Record a leak report. Published retained and only when it changes, so
+ * it is not aged like a reading: it stands until the next one, or until
+ * its producer is gone (docs/leak.md, *What is published*).
+ */
+void model_set_leak(enum model_leak_level level, enum model_leak_kind kind,
+		    time_t since, double rate);
+void model_set_leak_at(enum model_leak_level level, enum model_leak_kind kind,
+		       time_t since, double rate, time_t at);
+
+/** The report's words for level and kind, back to the enums; -1 for a
+ *  word this panel does not know, so a report it cannot read is
+ *  refused rather than shown as something else. */
+int model_leak_level_parse(const char *word);
+int model_leak_kind_parse(const char *word);
 
 /**
  * Record a UPS reading. `charge` and `runtime` are negative when the

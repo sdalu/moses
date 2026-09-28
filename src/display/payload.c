@@ -101,6 +101,46 @@ payload_json_number(const char *data, size_t len, const char *key, double *val)
 
 
 bool
+payload_json_string(const char *data, size_t len, const char *key,
+		    char *out, size_t outlen)
+{
+    char buf[PAYLOAD_MAX];
+    char quoted[64];
+
+    if ((key == NULL) || (out == NULL) || (outlen == 0) ||
+	(! payload_text(data, len, buf, sizeof(buf))))
+	return false;
+
+    int n = snprintf(quoted, sizeof(quoted), "\"%s\"", key);
+    if ((n < 0) || ((size_t)n >= sizeof(quoted)))
+	return false;
+
+    const char *at = strstr(buf, quoted);
+    if (at == NULL)
+	return false;
+
+    at = strchr(at + n, ':');
+    if (at == NULL)
+	return false;
+    for (at++ ; (*at == ' ') || (*at == '\t') ; at++)
+	;
+    if (*at != '"')
+	return false;
+    at++;
+
+    const char *end = strchr(at, '"');
+    if (end == NULL)
+	return false;
+    size_t vlen = (size_t)(end - at);
+    if ((vlen >= outlen) || (memchr(at, '\\', vlen) != NULL))
+	return false;
+
+    memcpy(out, at, vlen);
+    out[vlen] = '\0';
+    return true;
+}
+
+bool
 payload_online(const char *data, size_t len, bool *online)
 {
     char buf[PAYLOAD_MAX];

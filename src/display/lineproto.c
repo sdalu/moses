@@ -113,6 +113,14 @@ field(const char *measurement, const char *key, const char *value,
 		return LINEPROTO_IGNORED;
 	    return LINEPROTO_PULSE;
 	}
+	if (strcmp(key, "leak") == 0) {
+	    unsigned long level;
+	    if ((! payload_ulong(value, vlen, &level)) || (level > 2))
+		return LINEPROTO_IGNORED;
+	    out->leak.level = (unsigned)level;
+	    snprintf(out->leak.kind, sizeof(out->leak.kind), "%s", "none");
+	    return LINEPROTO_LEAK;
+	}
 	return LINEPROTO_IGNORED;
     }
 
@@ -142,6 +150,46 @@ field(const char *measurement, const char *key, const char *value,
     }
 
     return LINEPROTO_IGNORED;
+}
+
+
+/*
+ * A field that belongs to the leak reading this line started.
+ *
+ * The leak report is one reading spread over several fields --
+ * `leak=2,kind="flow",since=...,rate=5.60` -- where every other line
+ * here is one reading per field, so these are folded into the reading
+ * `leak=` made instead of standing alone. True when `key` was one of
+ * them, understood or not; a malformed value leaves the reading as
+ * `leak=` made it, which is no banner rather than a wrong one.
+ */
+static bool
+leak_field(const char *key, const char *value, struct lineproto_reading *r)
+{
+    size_t vlen = strlen(value);
+
+    if (strcmp(key, "kind") == 0) {
+	if ((vlen >= 2) && (value[0] == '"') && (value[vlen - 1] == '"') &&
+	    (vlen - 2 < sizeof(r->leak.kind))) {
+	    memcpy(r->leak.kind, value + 1, vlen - 2);
+	    r->leak.kind[vlen - 2] = '\0';
+	}
+	return true;
+    }
+    if (strcmp(key, "since") == 0) {
+	double v;
+	if (payload_double(value, vlen, &v) && (v >= 0))
+	    r->leak.since = (time_t)v;
+	return true;
+    }
+    if (strcmp(key, "rate") == 0) {
+	double v;
+	if (payload_double(value, vlen, &v) && (v >= 0))
+	    r->leak.rate = v;
+	return true;
+    }
+    /* On the wire, not on the panel. */
+    return (strcmp(key, "litres") == 0) || (strcmp(key, "source") == 0);
 }
 
 
@@ -202,6 +250,7 @@ lineproto_parse(const char *data, size_t len,
     /* Every field, comma separated. */
     size_t count = 0;
     char  *save  = NULL;
+    struct lineproto_reading *leak = NULL;	/* the reading leak= began */
     for (char *tok = strtok_r(fields, ",", &save) ; tok != NULL ;
 	 tok = strtok_r(NULL, ",", &save)) {
 
@@ -209,6 +258,9 @@ lineproto_parse(const char *data, size_t len,
 	if ((eq == NULL) || (eq == tok))
 	    return 0;			/* not key=value: not this line */
 	*eq = '\0';
+
+	if ((leak != NULL) && leak_field(tok, eq + 1, leak))
+	    continue;
 
 	if (count >= max)
 	    break;			/* room ran out; what is read stands */
@@ -224,6 +276,8 @@ lineproto_parse(const char *data, size_t len,
 
 	r.kind   = kind;
 	out[count++] = r;
+	if (kind == LINEPROTO_LEAK)
+	    leak = &out[count - 1];
     }
 
     if (ok != NULL)

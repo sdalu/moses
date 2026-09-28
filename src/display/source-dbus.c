@@ -171,6 +171,16 @@ apply(const char *line)
 	case LINEPROTO_VALVE:
 	    model_set_valve_at(r[i].closed, at);
 	    break;
+	case LINEPROTO_LEAK: {
+	    int kind = model_leak_kind_parse(r[i].leak.kind);
+	    if (kind >= 0)
+		model_set_leak_at((enum model_leak_level)r[i].leak.level,
+				  (enum model_leak_kind)kind,
+				  r[i].leak.since, r[i].leak.rate, at);
+	    else
+		LOG("leak report of an unknown kind: %s", r[i].leak.kind);
+	    break;
+	}
 	case LINEPROTO_FAILURE:
 	    /* The model has nowhere to put this: a reading that failed
 	     * leaves the last good one on the screen, ageing, which is

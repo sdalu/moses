@@ -510,6 +510,58 @@ test_lengths(void)
 }
 
 
+/*
+ * The leak report: one reading made of several fields, exactly as
+ * src/watermeter.c's leak_publish() writes it.
+ */
+static void
+test_leak(void)
+{
+    {
+	PARSE(LIT("watermeter leak=2,kind=\"flow\",since=1790483260,litres=134,"
+		  "rate=5.60,source=\"index\" 1790489588441452110"));
+	CHECK(ok);
+	CHECK(n == 1);
+	CHECK(r[0].kind == LINEPROTO_LEAK);
+	CHECK(r[0].leak.level == 2);
+	CHECK(strcmp(r[0].leak.kind, "flow") == 0);
+	CHECK(r[0].leak.since == 1790483260);
+	CHECK(NEAR(r[0].leak.rate, 5.60));
+	CHECK(r[0].at == 1790489588);
+    }
+    {
+	/* All clear: what is published at start and after a leak ends */
+	PARSE(LIT("watermeter leak=0,kind=\"none\",since=0,litres=0,rate=0.00,"
+		  "source=\"pulse\" 1790489588441452110"));
+	CHECK(ok);
+	CHECK(n == 1);
+	CHECK(r[0].kind == LINEPROTO_LEAK);
+	CHECK(r[0].leak.level == 0);
+	CHECK(strcmp(r[0].leak.kind, "none") == 0);
+    }
+    {
+	/* A level these producers never send is not a leak reading */
+	PARSE(LIT("watermeter leak=7,kind=\"flow\" 1790489588441452110"));
+	CHECK(ok);
+	CHECK(n == 0);
+    }
+    {
+	/* kind, since and rate mean something only after leak= */
+	PARSE(LIT("watermeter index=5,kind=\"flow\",rate=3 1790489588441452110"));
+	CHECK(ok);
+	CHECK(n == 1);
+	CHECK(r[0].kind == LINEPROTO_INDEX);
+    }
+    {
+	/* A kind too long to be one of the four is left as "none" */
+	PARSE(LIT("watermeter leak=1,kind=\"torrential\" 1790489588441452110"));
+	CHECK(ok);
+	CHECK(n == 1);
+	CHECK(strcmp(r[0].leak.kind, "none") == 0);
+    }
+}
+
+
 int
 main(void)
 {
@@ -520,6 +572,7 @@ main(void)
     test_malformed();
     test_several();
     test_lengths();
+    test_leak();
 
     printf("%s: %d checks, %d failures\n",
 	   (failures == 0) ? "PASS" : "FAIL", checks, failures);

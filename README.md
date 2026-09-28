@@ -38,6 +38,7 @@ Documentation
 | [docs/programs.md](docs/programs.md)     | Options, environment, `loop-runner`       |
 | [docs/interfaces.md](docs/interfaces.md) | MQTT, line protocol, D-Bus                |
 | [docs/leak.md](docs/leak.md)             | Leak detection: principle, rules, limits  |
+| [docs/alert.md](docs/alert.md)           | Alerts on the panel, every screen          |
 | [test/README.md](test/README.md)         | The test suite                            |
 | [DESIGN.md](DESIGN.md)                   | Why it is shaped this way                 |
 
@@ -65,6 +66,7 @@ How it fits together
 
    <prefix>/index      --> +----------------+
    <prefix>/pulse      --> |                |
+   <prefix>/leak       --> |                |
    <prefix>/state      --> | moses_display  | --> LCD
    <prefix>/sensors    --> |                |
    <prefix>/availability/* +----------------+

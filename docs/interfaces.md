@@ -59,6 +59,10 @@ pulses found not to match the index are reported on `error`:
 { "source": "watermeter", "type": "pulse", "msg": "pulses do not match the index: no pulse for 12 L of index" }
 ~~~
 
+`moses_display` shows it as a banner in its header's place, from the
+topic or, under `--source=local`, from the `watermeter leak=` line on
+the bus ([programs.md](programs.md#moses_display)).
+
 It is a report, not a latch: a `flow` goes back to `ok` when the water
 stops, a `slow` when other use breaks the run, so the next night sends
 it again. Closing the valve on it is the consumer's decision.

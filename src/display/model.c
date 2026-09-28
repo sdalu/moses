@@ -246,3 +246,49 @@ model_set_avail(enum model_producer who, bool online)
     model.avail[who] = online ? MODEL_AVAIL_ONLINE : MODEL_AVAIL_OFFLINE;
     pthread_mutex_unlock(&model_mutex);
 }
+
+
+void
+model_set_leak_at(enum model_leak_level level, enum model_leak_kind kind,
+		  time_t since, double rate, time_t at)
+{
+    pthread_mutex_lock(&model_mutex);
+    model.leak.known = true;
+    model.leak.level = level;
+    model.leak.kind  = kind;
+    model.leak.since = since;
+    model.leak.rate  = rate;
+    model.leak.at    = at;
+    pthread_mutex_unlock(&model_mutex);
+}
+
+
+void
+model_set_leak(enum model_leak_level level, enum model_leak_kind kind,
+	       time_t since, double rate)
+{
+    model_set_leak_at(level, kind, since, rate, model_now());
+}
+
+
+int
+model_leak_level_parse(const char *word)
+{
+    if (word == NULL)             return -1;
+    if (strcmp(word, "ok")    == 0) return MODEL_LEAK_OK;
+    if (strcmp(word, "warn")  == 0) return MODEL_LEAK_WARN;
+    if (strcmp(word, "alert") == 0) return MODEL_LEAK_ALERT;
+    return -1;
+}
+
+
+int
+model_leak_kind_parse(const char *word)
+{
+    if (word == NULL)             return -1;
+    if (strcmp(word, "none")  == 0) return MODEL_LEAK_NONE;
+    if (strcmp(word, "flow")  == 0) return MODEL_LEAK_FLOW;
+    if (strcmp(word, "slow")  == 0) return MODEL_LEAK_SLOW;
+    if (strcmp(word, "quiet") == 0) return MODEL_LEAK_QUIET;
+    return -1;
+}

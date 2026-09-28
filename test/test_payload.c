@@ -122,6 +122,48 @@ test_ulong(void)
 }
 
 
+/*
+ * The leak report, as src/watermeter.c publishes it on `leak`: two
+ * words and two numbers read out of one flat object.
+ */
+static void
+test_json_leak(void)
+{
+    static const char leak[] =
+	"{ \"level\": \"alert\", \"kind\": \"flow\", \"since\": 1790483260, "
+	"\"litres\": 134, \"rate\": 5.60, \"source\": \"index\" }";
+    char   w[8];
+    double v;
+
+    CHECK(payload_json_string(LIT(leak), "level", w, sizeof(w)) == true);
+    CHECK(strcmp(w, "alert") == 0);
+    CHECK(payload_json_string(LIT(leak), "kind", w, sizeof(w)) == true);
+    CHECK(strcmp(w, "flow") == 0);
+    CHECK(payload_json_string(LIT(leak), "source", w, sizeof(w)) == true);
+    CHECK(strcmp(w, "index") == 0);
+    CHECK(payload_json_number(LIT(leak), "since", &v) == true);
+    CHECK(NEAR(v, 1790483260));
+    CHECK(payload_json_number(LIT(leak), "rate", &v) == true);
+    CHECK(NEAR(v, 5.60));
+
+    /* A number where a string is wanted, and a missing key */
+    CHECK(payload_json_string(LIT(leak), "since", w, sizeof(w)) == false);
+    CHECK(payload_json_string(LIT(leak), "state", w, sizeof(w)) == false);
+
+    /* A value that does not fit is refused, not truncated: "ale" is
+     * not "alert" */
+    CHECK(payload_json_string(LIT(leak), "level", w, 4) == false);
+
+    /* An escape means the payload is not from src/watermeter.c */
+    static const char escaped[] = "{\"kind\": \"fl\\\"ow\"}";
+    CHECK(payload_json_string(LIT(escaped), "kind", w, sizeof(w)) == false);
+
+    /* No closing quote */
+    static const char open_q[] = "{\"kind\": \"flow}";
+    CHECK(payload_json_string(LIT(open_q), "kind", w, sizeof(w)) == false);
+}
+
+
 static void
 test_json(void)
 {
@@ -198,6 +240,7 @@ main(void)
     test_double();
     test_ulong();
     test_json();
+    test_json_leak();
     test_online();
 
     printf("%s: %d checks, %d failures\n",
